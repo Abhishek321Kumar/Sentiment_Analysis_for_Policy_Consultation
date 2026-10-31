@@ -1,0 +1,1365 @@
+/* ============================================================
+   RegisterPage.css — Dedicated Registration Page Styles
+   ============================================================ */
+
+/* ── Page Layout ── */
+.reg-page {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+/* ============================================================
+   LEFT — Image Panel
+   ============================================================ */
+.reg-image-panel {
+  position: relative;
+  flex: 1.1;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.reg-image-panel__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 35%;
+  display: block;
+}
+
+/* Dark gradient overlay so text reads cleanly */
+.reg-image-panel__overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(18, 18, 18, 0.55) 0%,
+    rgba(18, 18, 18, 0.15) 40%,
+    rgba(18, 18, 18, 0.70) 100%
+  );
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 2rem 2.5rem 2.5rem;
+}
+
+/* Brand on image — pinned to top-left */
+.reg-image-panel__brand {
+  position: absolute;
+  top: 2rem;
+  left: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  text-decoration: none;
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+  transition: opacity 0.2s ease;
+  z-index: 1;
+}
+
+.reg-image-panel__brand:hover {
+  opacity: 0.85;
+  color: #ffffff;
+}
+
+/* Bottom text on image */
+.reg-image-panel__tagline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.reg-image-panel__tagline h2 {
+  font-family: 'Outfit', sans-serif;
+  font-size: clamp(1.4rem, 2.5vw, 1.85rem);
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+
+.reg-image-panel__tagline p {
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.80);
+  line-height: 1.65;
+  max-width: 340px;
+}
+
+/* Feature pills — now inside tagline block */
+.reg-image-panel__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.reg-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 100px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: 0.01em;
+}
+
+.reg-pill svg {
+  color: #4ade80;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   RIGHT — Form Panel
+   ============================================================ */
+.reg-form-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;           /* allow scroll only on this side if needed */
+  background: var(--bg-primary);
+  border-left: 1px solid var(--border-color);
+}
+
+/* Scrollbar styling — minimal, unobtrusive */
+.reg-form-panel::-webkit-scrollbar { width: 4px; }
+.reg-form-panel::-webkit-scrollbar-track { background: transparent; }
+.reg-form-panel::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+.reg-form-panel__inner {
+  width: 100%;
+  max-width: 520px;
+  margin: auto;
+  padding: 2rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ── Form Header ── */
+.reg-form-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.reg-form-header__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 100px;
+  background: var(--decision-flag-bg);
+  color: var(--decision-flag);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  width: fit-content;
+}
+
+.reg-form-header__title {
+  font-family: 'Outfit', sans-serif;
+  font-size: clamp(1.35rem, 2.5vw, 1.65rem);
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  margin-top: 0.1rem;
+}
+
+.reg-form-header__sub {
+  font-size: 0.83rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  max-width: 420px;
+}
+
+/* ── Alert ── */
+.reg-alert {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.9rem;
+  background: var(--sentiment-negative-bg);
+  border: 1px solid var(--sentiment-negative);
+  border-radius: 8px;
+  color: var(--sentiment-negative);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+/* ── Form ── */
+.reg-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Section Labels */
+.reg-section-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-muted);
+  padding-bottom: 0.2rem;
+  border-bottom: 1px solid var(--divider);
+}
+
+.reg-section-label svg {
+  color: var(--brand-accent);
+}
+
+/* Row layouts */
+.reg-row {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.reg-row--full  { grid-template-columns: 1fr; }
+.reg-row--two   { grid-template-columns: 1fr 1fr; }
+
+/* Compact form inputs */
+.reg-form .form-input {
+  padding: 0.625rem 0.875rem;
+  font-size: 0.85rem;
+  border-radius: 7px;
+  font-family: 'Inter', -apple-system, sans-serif;
+}
+
+.reg-form .form-label {
+  font-size: 0.78rem;
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.reg-form .form-group {
+  gap: 0.3rem;
+}
+
+/* ── Password Input & Toggle ── */
+.form-input-wrap {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.form-input-wrap .form-input {
+  padding-right: 2.6rem;
+}
+
+.pass-toggle {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: color 0.15s ease;
+  line-height: 1;
+}
+
+.pass-toggle:hover {
+  color: var(--text-primary);
+}
+
+.pass-toggle:focus-visible {
+  outline: 2px solid var(--brand-accent);
+}
+
+/* ── Password Rules ── */
+.pw-rules,
+.reg-pw-rules {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem 0.75rem;
+  padding: 0.65rem 0.85rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin: 0.2rem 0 0.4rem;
+}
+
+.pw-rule,
+.reg-pw-rule {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.72rem;
+  font-family: 'Inter', -apple-system, sans-serif;
+  color: var(--text-muted);
+  transition: color 0.2s ease;
+}
+
+.pw-rule__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border-color);
+  flex-shrink: 0;
+  transition: background-color 0.2s ease;
+}
+
+.pw-rule.pass,
+.reg-pw-rule--ok {
+  color: var(--sentiment-positive);
+  font-weight: 500;
+}
+
+.pw-rule.pass .pw-rule__dot,
+.reg-pw-rule--ok svg {
+  background: var(--sentiment-positive);
+  color: var(--sentiment-positive);
+}
+
+.pw-rule.fail {
+  color: var(--text-muted);
+}
+
+/* ── Terms & Conditions Checkbox ── */
+.reg-terms,
+.reg-checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin: 0.4rem 0 0.25rem;
+  padding: 0.2rem 0;
+  cursor: pointer;
+}
+
+.reg-terms__chk,
+.reg-checkbox-label .checkbox-input {
+  width: 17px;
+  height: 17px;
+  margin-top: 2px;
+  accent-color: var(--brand-accent);
+  cursor: pointer;
+  flex-shrink: 0;
+  border-radius: 4px;
+}
+
+.reg-terms__label,
+.reg-checkbox-label span {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.825rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* ── Submit Button ── */
+.reg-submit-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.5rem;
+  padding: 0.85rem 1.5rem;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  background: #23272A;
+  color: #FFFFFF;
+  border: 1.5px solid #23272A;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.reg-submit-btn:hover:not(:disabled) {
+  background: var(--brand-accent);
+  border-color: var(--brand-accent);
+  color: #FFFFFF;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(194, 65, 12, 0.32);
+}
+
+.reg-submit-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(194, 65, 12, 0.2);
+}
+
+.reg-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.reg-submit-btn__inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+}
+
+/* ── Footer Links & Notes ── */
+.reg-footer-links,
+.reg-footer-note {
+  text-align: center;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-top: 0.75rem;
+  line-height: 1.5;
+}
+
+.reg-footer-links a,
+.reg-footer-note a {
+  font-weight: 600;
+  color: var(--brand-accent);
+  text-decoration: none;
+  margin-left: 0.25rem;
+  transition: color 0.15s ease;
+}
+
+.reg-footer-links a:hover,
+.reg-footer-note a:hover {
+  color: var(--brand-accent-hover);
+  text-decoration: underline;
+}
+
+.reg-footer-note--muted {
+  font-size: 0.72rem;
+  opacity: 0.7;
+  padding: 0.6rem 0.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  text-align: left;
+}
+
+/* ── Success Screen ── */
+.reg-success {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+}
+
+.reg-success__inner {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+  max-width: 420px;
+  padding: 2rem;
+}
+
+.reg-success__icon {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: var(--sentiment-positive-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--sentiment-positive);
+}
+
+.reg-success__inner h2 {
+  font-size: 1.5rem;
+  color: var(--text-primary);
+}
+
+.reg-success__inner p {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.reg-success__redirect {
+  font-size: 0.78rem !important;
+  color: var(--text-muted) !important;
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+/* ── Step 4 Administrator Review Box & Dedicated Layout ── */
+.org-review-box--admin {
+  background: var(--bg-card);
+  border: 1.5px solid rgba(194, 65, 12, 0.28);
+  box-shadow: 0 4px 16px rgba(194, 65, 12, 0.06);
+  grid-column: 1 / -1;
+  margin-bottom: 0.5rem;
+}
+
+.org-review-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1.15rem;
+  padding-top: 0.35rem;
+}
+
+.org-review-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.org-review-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.org-review-value {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.org-review-edit-btn {
+  background: rgba(194, 65, 12, 0.08);
+  border: 1px solid rgba(194, 65, 12, 0.22);
+  color: var(--brand-accent);
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.org-review-edit-btn:hover {
+  background: var(--brand-accent);
+  color: #FFFFFF;
+}
+
+.org-verified-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 12px;
+  background: rgba(74, 124, 89, 0.15);
+  color: var(--sentiment-positive);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+/* Modal styles for Step 4 Edit */
+.org-wiz-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1.25rem;
+}
+
+.org-wiz-modal-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 520px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.org-wiz-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.org-wiz-modal-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.org-wiz-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.3rem;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.org-wiz-modal-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-card);
+}
+
+.org-wiz-modal-body {
+  padding: 1.35rem 1.5rem;
+}
+
+.org-wiz-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+@media (max-width: 900px) {
+  .reg-image-panel {
+    display: none;
+  }
+  .reg-form-panel {
+    border-left: none;
+    flex: 1;
+  }
+  .reg-form-panel__inner {
+    padding: 2rem 1.5rem;
+  }
+}
+
+@media (max-width: 540px) {
+  .reg-row--two {
+    grid-template-columns: 1fr;
+  }
+  .reg-pw-rules {
+    grid-template-columns: 1fr;
+  }
+  .reg-form-panel__inner {
+    padding: 1.5rem 1rem;
+  }
+}
+
+.step-badge {
+  display: inline-block;
+  padding: 0.2rem 0.65rem;
+  background: rgba(194, 65, 12, 0.12);
+  color: var(--brand-accent);
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================================
+   FULL-PAGE ORGANISATION REGISTRATION WIZARD (4 STEPS)
+   Spans the entire viewport width when filling organisation details
+   ============================================================ */
+.reg-page--fullwidth {
+  height: auto;
+  min-height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+}
+
+.org-wiz-topbar {
+  width: 100%;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
+  padding: 0.9rem 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+.org-wiz-back-home {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.38rem 0.75rem;
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.82rem;
+  font-weight: 600;
+  transition: all 0.18s ease;
+}
+
+.org-wiz-back-home:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border-color: var(--brand-accent);
+}
+
+.org-wiz-brand-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-color);
+}
+
+.org-wiz-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  text-decoration: none;
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.org-wiz-topbar__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.org-wiz-user-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.32rem 0.8rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+}
+
+/* Light / Dark Mode Toggle button for Register pages */
+.reg-theme-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.reg-theme-btn:hover {
+  background: var(--bg-card);
+  border-color: var(--brand-accent);
+  color: var(--brand-accent);
+}
+
+/* Top actions in split-screen registration */
+.reg-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.reg-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.84rem;
+  font-weight: 600;
+  padding: 0.35rem 0.65rem;
+  border-radius: 7px;
+  transition: all 0.18s ease;
+}
+
+.reg-back-link:hover {
+  color: var(--brand-accent);
+  background: rgba(194, 65, 12, 0.08);
+}
+
+.org-wiz-container {
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 2.25rem 2rem 3.5rem;
+  flex: 1;
+}
+
+.org-wiz-header {
+  text-align: center;
+  max-width: 680px;
+  margin: 0 auto 2rem;
+}
+
+.org-wiz-header__title {
+  font-family: 'Outfit', sans-serif;
+  font-size: clamp(1.55rem, 2.6vw, 2.05rem);
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.025em;
+  margin-bottom: 0.4rem;
+}
+
+.org-wiz-header__sub {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+/* ── 4-Step Progress Stepper ── */
+.org-wiz-stepper {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.85rem;
+  margin-bottom: 2rem;
+}
+
+.org-wiz-step {
+  background: var(--bg-card);
+  border: 1.5px solid var(--border-color);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  text-align: left;
+}
+
+.org-wiz-step:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.org-wiz-step.active {
+  border-color: var(--brand-accent);
+  background: rgba(194, 65, 12, 0.05);
+  box-shadow: 0 3px 12px rgba(194, 65, 12, 0.08);
+}
+
+.org-wiz-step.completed {
+  border-color: rgba(74, 124, 89, 0.45);
+  background: rgba(74, 124, 89, 0.04);
+}
+
+.org-wiz-step__num {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.82rem;
+  font-weight: 800;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  border: 1.5px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.org-wiz-step.active .org-wiz-step__num {
+  background: var(--brand-accent);
+  color: #ffffff;
+  border-color: var(--brand-accent);
+}
+
+.org-wiz-step.completed .org-wiz-step__num {
+  background: var(--sentiment-positive);
+  color: #ffffff;
+  border-color: var(--sentiment-positive);
+}
+
+.org-wiz-step__label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.org-wiz-step__title {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-top: 0.1rem;
+}
+
+/* ── Main Wizard Card ── */
+.org-wiz-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 2.25rem 2.5rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.org-wiz-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 1.25rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.org-wiz-card__title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.org-wiz-card__desc {
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+  margin-top: 0.2rem;
+}
+
+.org-wiz-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.15rem 1.35rem;
+  margin-bottom: 1.15rem;
+}
+
+.org-wiz-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.15rem 1.25rem;
+  margin-bottom: 1.15rem;
+}
+
+/* ── Logo Upload Box ── */
+.org-logo-upload {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 1.1rem;
+  background: var(--bg-secondary);
+  border: 1.5px dashed var(--border-color);
+  border-radius: 10px;
+}
+
+.org-logo-preview {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  font-weight: 800;
+  color: var(--brand-accent);
+}
+
+.org-logo-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ── Size Category Cards ── */
+.org-size-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1.35rem;
+}
+
+.org-size-card {
+  padding: 0.85rem 0.75rem;
+  border-radius: 10px;
+  border: 1.5px solid var(--border-color);
+  background: var(--bg-secondary);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.org-size-card:hover {
+  border-color: var(--text-muted);
+}
+
+.org-size-card.selected {
+  border-color: var(--brand-accent);
+  background: rgba(194, 65, 12, 0.06);
+}
+
+.org-size-card__name {
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.org-size-card__range {
+  font-size: 0.73rem;
+  color: var(--text-secondary);
+  margin-top: 0.2rem;
+}
+
+/* ── Multi-Select Department Chips ── */
+.org-dept-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.45rem;
+}
+
+.org-dept-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.42rem 0.85rem;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1.5px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.org-dept-chip.selected {
+  background: #23272A;
+  color: #ffffff;
+  border-color: #23272A;
+}
+
+.org-dept-chip.selected:hover {
+  background: var(--brand-accent);
+  border-color: var(--brand-accent);
+}
+
+/* ── Review Summary Grid (Step 4) ── */
+.org-review-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+
+.org-review-box {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.1rem 1.25rem;
+}
+
+.org-review-box__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.org-review-box__title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-primary);
+}
+
+.org-review-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+  padding: 0.25rem 0;
+}
+
+.org-review-row span:first-child {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.org-review-row span:last-child {
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: right;
+}
+
+/* ── Wizard Navigation Footer ── */
+.org-wiz-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.org-wiz-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.35rem;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.org-wiz-btn-secondary:hover {
+  border-color: var(--text-muted);
+}
+
+.org-wiz-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.8rem 1.65rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: #23272A;
+  color: #ffffff;
+  border: 1.5px solid #23272A;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.org-wiz-btn-primary:hover:not(:disabled) {
+  background: var(--brand-accent);
+  border-color: var(--brand-accent);
+  color: #ffffff;
+}
+
+.org-wiz-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── Step 4 Administrator Review Box & Dedicated Layout ── */
+.org-review-box--admin {
+  background: var(--bg-card);
+  border: 1.5px solid rgba(194, 65, 12, 0.28);
+  box-shadow: 0 4px 16px rgba(194, 65, 12, 0.06);
+  grid-column: 1 / -1;
+  margin-bottom: 0.5rem;
+}
+
+.org-review-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1.15rem;
+  padding-top: 0.35rem;
+}
+
+.org-review-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.org-review-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.org-review-value {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.org-review-edit-btn {
+  background: rgba(194, 65, 12, 0.08);
+  border: 1px solid rgba(194, 65, 12, 0.22);
+  color: var(--brand-accent);
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.org-review-edit-btn:hover {
+  background: var(--brand-accent);
+  color: #FFFFFF;
+}
+
+.org-verified-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 12px;
+  background: rgba(74, 124, 89, 0.15);
+  color: var(--sentiment-positive);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+/* Modal styles for Step 4 Edit */
+.org-wiz-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1.25rem;
+}
+
+.org-wiz-modal-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 520px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.org-wiz-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.org-wiz-modal-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.org-wiz-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.3rem;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.org-wiz-modal-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-card);
+}
+
+.org-wiz-modal-body {
+  padding: 1.35rem 1.5rem;
+}
+
+.org-wiz-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+@media (max-width: 900px) {
+  .org-wiz-stepper {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .org-size-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .org-wiz-grid-2,
+  .org-wiz-grid-3,
+  .org-review-grid {
+    grid-template-columns: 1fr;
+  }
+  .org-wiz-card {
+    padding: 1.5rem 1.25rem;
+  }
+}
+
+

@@ -1,0 +1,497 @@
+/* ============================================================
+   PotentPolicy — Global Design System
+   Themes: Slate Charcoal & Terracotta (Light) | Obsidian (Dark)
+   ============================================================ */
+
+/* ---------- Google Fonts ---------- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap');
+
+/* ---------- CSS Reset ---------- */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ============================================================
+   LIGHT MODE — Slate Charcoal & Terracotta
+   ============================================================ */
+:root,
+[data-theme="light"] {
+  /* Core Interface */
+  --bg-primary:       #FDFBF7;
+  --bg-secondary:     #F4F1EC;
+  --bg-card:          #FFFFFF;
+  --bg-input:         #FFFFFF;
+  --bg-hover:         #F0EDE8;
+
+  --text-primary:     #23272A;
+  --text-secondary:   #4A5568;
+  --text-muted:       #718096;
+  --text-placeholder: #A0AEC0;
+  --text-inverse:     #FDFBF7;
+
+  --border-color:     #E2E8F0;
+  --border-focus:     #23272A;
+  --divider:          #EDE8E0;
+
+  /* Brand */
+  --brand-primary:    #23272A;
+  --brand-accent:     #C2410C;
+  --brand-accent-hover: #9A3009;
+
+  /* Sentiment */
+  --sentiment-positive:      #4A7C59;
+  --sentiment-positive-bg:   #EBF4EE;
+  --sentiment-neutral:       #78716C;
+  --sentiment-neutral-bg:    #F5F4F2;
+  --sentiment-negative:      #C2410C;
+  --sentiment-negative-bg:   #FEF0E8;
+
+  /* Decision */
+  --decision-flag:    #B45309;
+  --decision-flag-bg: #FEF3C7;
+
+  /* Shadows */
+  --shadow-sm:   0 1px 3px rgba(35,39,42,0.08);
+  --shadow-md:   0 4px 16px rgba(35,39,42,0.10);
+  --shadow-lg:   0 8px 32px rgba(35,39,42,0.12);
+  --shadow-card: 0 2px 8px rgba(35,39,42,0.06);
+
+  /* Nav */
+  --nav-bg:      rgba(253,251,247,0.92);
+  --nav-border:  #E2E8F0;
+
+  /* Hero Gradient */
+  --hero-gradient: linear-gradient(135deg, #FDFBF7 0%, #F4EFE6 50%, #EDE3D5 100%);
+  --hero-accent-glow: radial-gradient(ellipse at 70% 50%, rgba(194,65,12,0.08) 0%, transparent 65%);
+
+  /* Buttons */
+  --btn-primary-bg:   #23272A;
+  --btn-primary-text: #FDFBF7;
+  --btn-primary-hover: #C2410C;
+  --btn-secondary-bg: transparent;
+  --btn-secondary-border: #23272A;
+  --btn-secondary-text: #23272A;
+
+  color-scheme: light;
+}
+
+/* ============================================================
+   DARK MODE — High-Contrast Monochromatic + Tri-Color Signals
+   ============================================================ */
+[data-theme="dark"] {
+  /* Core Interface */
+  --bg-primary:       #121212;
+  --bg-secondary:     #181818;
+  --bg-card:          #1E1E24;
+  --bg-input:         #252530;
+  --bg-hover:         #252530;
+
+  --text-primary:     #E2E8F0;
+  --text-secondary:   #A0AEC0;
+  --text-muted:       #718096;
+  --text-placeholder: #4A5568;
+  --text-inverse:     #121212;
+
+  --border-color:     #2D2D3A;
+  --border-focus:     #E2E8F0;
+  --divider:          #2D2D3A;
+
+  /* Brand */
+  --brand-primary:    #E2E8F0;
+  --brand-accent:     #A855F7;
+  --brand-accent-hover: #9333EA;
+
+  /* Sentiment */
+  --sentiment-positive:      #22C55E;
+  --sentiment-positive-bg:   rgba(34,197,94,0.10);
+  --sentiment-neutral:       #EAB308;
+  --sentiment-neutral-bg:    rgba(234,179,8,0.10);
+  --sentiment-negative:      #EF4444;
+  --sentiment-negative-bg:   rgba(239,68,68,0.10);
+
+  /* Decision */
+  --decision-flag:    #A855F7;
+  --decision-flag-bg: rgba(168,85,247,0.12);
+
+  /* Shadows */
+  --shadow-sm:   0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md:   0 4px 16px rgba(0,0,0,0.5);
+  --shadow-lg:   0 8px 32px rgba(0,0,0,0.6);
+  --shadow-card: 0 2px 8px rgba(0,0,0,0.35);
+
+  /* Nav */
+  --nav-bg:      rgba(18,18,18,0.92);
+  --nav-border:  #2D2D3A;
+
+  /* Hero Gradient */
+  --hero-gradient: linear-gradient(135deg, #121212 0%, #16161E 50%, #1A1A28 100%);
+  --hero-accent-glow: radial-gradient(ellipse at 70% 50%, rgba(168,85,247,0.12) 0%, transparent 65%);
+
+  /* Buttons */
+  --btn-primary-bg:   #E2E8F0;
+  --btn-primary-text: #121212;
+  --btn-primary-hover: #CBD5E0;
+  --btn-secondary-bg: transparent;
+  --btn-secondary-border: #E2E8F0;
+  --btn-secondary-text: #E2E8F0;
+
+  color-scheme: dark;
+}
+
+/* ============================================================
+   BASE STYLES
+   ============================================================ */
+html {
+  scroll-behavior: smooth;
+  font-size: 16px;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ============================================================
+   TYPOGRAPHY
+   ============================================================ */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text-primary);
+}
+
+h1 { font-size: clamp(2rem, 5vw, 3.5rem); }
+h2 { font-size: clamp(1.5rem, 3vw, 2.25rem); }
+h3 { font-size: clamp(1.25rem, 2.5vw, 1.5rem); }
+h4 { font-size: 1.125rem; }
+
+p {
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+a {
+  text-decoration: none;
+  color: var(--brand-accent);
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--brand-accent-hover);
+}
+
+/* ============================================================
+   LAYOUT UTILITIES
+   ============================================================ */
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.section {
+  padding: 5rem 0;
+}
+
+/* ============================================================
+   BUTTON SYSTEM
+   ============================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1.5rem;
+  border-radius: 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  text-decoration: none;
+  letter-spacing: 0.01em;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #23272A;
+  color: #FFFFFF;
+  border-color: #23272A;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--brand-accent);
+  border-color: var(--brand-accent);
+  color: #FFFFFF;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(194, 65, 12, 0.32);
+}
+
+.btn-secondary {
+  background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-text);
+  border-color: var(--btn-secondary-border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--brand-accent);
+  color: var(--brand-accent);
+  transform: translateY(-1px);
+}
+
+.btn-accent {
+  background: #23272A;
+  color: #FFFFFF;
+  border-color: #23272A;
+}
+
+.btn-accent:hover:not(:disabled) {
+  background: var(--brand-accent);
+  border-color: var(--brand-accent);
+  color: #FFFFFF;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(194, 65, 12, 0.32);
+}
+
+.btn-lg {
+  padding: 0.875rem 2rem;
+  font-size: 1rem;
+  border-radius: 10px;
+}
+
+.btn-sm {
+  padding: 0.45rem 1rem;
+  font-size: 0.8rem;
+  border-radius: 6px;
+}
+
+.btn-full {
+  width: 100%;
+}
+
+/* ============================================================
+   CARD SYSTEM
+   ============================================================ */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+/* ============================================================
+   FORM SYSTEM
+   ============================================================ */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.form-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.01em;
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--bg-input);
+  border: 1.5px solid var(--border-color);
+  border-radius: 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  outline: none;
+}
+
+.form-input::placeholder {
+  color: var(--text-placeholder);
+}
+
+.form-input:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(35,39,42,0.08);
+}
+
+[data-theme="dark"] .form-input:focus {
+  box-shadow: 0 0 0 3px rgba(226,232,240,0.08);
+}
+
+.form-input.error {
+  border-color: var(--sentiment-negative);
+}
+
+.form-error {
+  font-size: 0.78rem;
+  color: var(--sentiment-negative);
+  margin-top: 0.2rem;
+}
+
+.form-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+}
+
+select.form-input {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23718096' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2.5rem;
+}
+
+/* ============================================================
+   BADGE SYSTEM
+   ============================================================ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 100px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.badge-positive {
+  background: var(--sentiment-positive-bg);
+  color: var(--sentiment-positive);
+}
+
+.badge-negative {
+  background: var(--sentiment-negative-bg);
+  color: var(--sentiment-negative);
+}
+
+.badge-neutral {
+  background: var(--sentiment-neutral-bg);
+  color: var(--sentiment-neutral);
+}
+
+.badge-decision {
+  background: var(--decision-flag-bg);
+  color: var(--decision-flag);
+}
+
+/* ============================================================
+   DIVIDER
+   ============================================================ */
+.divider {
+  width: 100%;
+  height: 1px;
+  background: var(--divider);
+  margin: 1.5rem 0;
+}
+
+.divider-text {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin: 1.5rem 0;
+}
+
+.divider-text::before,
+.divider-text::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+
+/* ============================================================
+   SCROLLBAR
+   ============================================================ */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInLeft {
+  from { opacity: 0; transform: translateX(-20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes fadeInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%       { transform: scale(1.04); opacity: 0.85; }
+}
+
+@keyframes shimmer {
+  from { background-position: -200% center; }
+  to   { background-position: 200% center; }
+}
+
+.animate-fade-in    { animation: fadeIn 0.5s ease forwards; }
+.animate-fade-in-left  { animation: fadeInLeft 0.5s ease forwards; }
+.animate-fade-in-right { animation: fadeInRight 0.5s ease forwards; }
+
+/* ============================================================
+   RESPONSIVE UTILITIES
+   ============================================================ */
+@media (max-width: 768px) {
+  .container { padding: 0 1rem; }
+  .section   { padding: 3.5rem 0; }
+  h1 { font-size: clamp(1.75rem, 8vw, 2.5rem); }
+}
+
+@media (max-width: 480px) {
+  .btn-lg { padding: 0.75rem 1.5rem; font-size: 0.9rem; }
+}
