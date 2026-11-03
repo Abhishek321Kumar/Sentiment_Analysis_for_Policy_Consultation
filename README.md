@@ -470,3 +470,13 @@ The following enhancements are planned for the upcoming Stage 2 delivery:
 *Built with React 19, Node.js, Express, and PostgreSQL.*
 
 </div>
+
+
+## 🛑 Copyright Notice & Restrictions
+
+Copyright © 2026 Abhishek Anil Kumar. All rights reserved.
+
+This is a public repository for viewing purposes only. **No permission** is granted 
+for anyone to copy, modify, distribute, sub-license, or use this software and code 
+in any project, commercial or non-commercial. Unauthorized use or claiming ownership 
+of this work constitutes copyright infringement.
