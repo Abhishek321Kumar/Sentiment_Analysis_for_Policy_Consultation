@@ -491,13 +491,22 @@ export default function ParticipatePage() {
                       {qType === 'TEXT' && (
                         <div>
                           <textarea
-                            rows={4}
                             required={isReq}
                             className="dash-textarea"
                             placeholder="Enter your detailed feedback..."
                             value={currentVal || ''}
                             onChange={e => handleTextChange(qId, e.target.value)}
-                            style={{ width: '100%', fontSize: '0.88rem' }}
+                            style={{
+                              width: '100%',
+                              maxWidth: '100%',
+                              height: '130px',
+                              minHeight: '130px',
+                              maxHeight: '130px',
+                              resize: 'none',
+                              overflowY: 'auto',
+                              boxSizing: 'border-box',
+                              fontSize: '0.88rem'
+                            }}
                           />
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
                             <span>Minimum: {q.minLength || 5} chars</span>

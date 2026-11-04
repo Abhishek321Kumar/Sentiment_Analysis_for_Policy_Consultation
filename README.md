@@ -115,7 +115,9 @@ Below is a detailed log of all enhancements, features, bug fixes, and refinement
 
 | Date / Milestone | Module | Type | Description of Additions & Changes |
 |---|---|:---:|---|
-| **Latest** | **User Governance** | 🛡️ Security & Rules | **Delete vs Deactivate Rules**: Admin can hard-delete Campaign Managers and Stakeholders if their status is `NOT REGISTERED` or if they have not participated in any campaigns (`0 campaigns / 0 comments`). If they have participated, deletion is restricted and accounts can only be deactivated to safeguard audit integrity. |
+| **Latest** | **Campaign Wizard** | 💾 Auto-Save & Draft | **Progress Auto-Save & Discard Changes**: Real-time debounced auto-saving preserves campaign manager progress across all steps (details, questions, cohort selection) in local storage with live `Progress Saved (HH:MM)` indicator. Added a dedicated `Discard Changes` modal to clear drafts or revert edits to the saved database state, plus an exit guard when cancelling with unsaved progress. |
+| **Latest** | **Campaign & Feedback UI** | 📐 Layout Polish | **Fixed-Height Non-Expanding Textareas**: Removed browser resize grabbers (`resize: none !important;`) on all consultation description, objectives, and stakeholder instruction textareas. Standardized to a comfortable fixed height with internal vertical scrollbars (`overflow-y: auto`) when content exceeds the length. |
+| **Recent** | **User Governance** | 🛡️ Security & Rules | **Delete vs Deactivate Rules**: Admin can hard-delete Campaign Managers and Stakeholders if their status is `NOT REGISTERED` or if they have not participated in any campaigns (`0 campaigns / 0 comments`). If they have participated, deletion is restricted and accounts can only be deactivated to safeguard audit integrity. |
 | **Latest** | **Stakeholder Directory** | 🔒 Access Control | **Enforce Verification Rule**: Admin can only activate a stakeholder when they are `INACTIVE`. For `NOT REGISTERED` stakeholders, the `Activate` button is disabled with tooltip guidance until the stakeholder verifies enrollment via their verification link and Organisation Code. |
 | **Latest** | **Bulk Upload UI** | 🎨 UI Overhaul | **Decluttered Bulk Upload Modals**: Streamlined both Stakeholder and Campaign Manager bulk modals. Replaced cluttered multi-line header descriptions and redundant sample buttons with a clean dropzone, sample download buttons (`.xlsx` and `.csv`), and a clean direct paste area with a subtle `Fill sample rows` helper. |
 | **Latest** | **Template Exports** | 📄 Data Standards | **Official Roster Templates**: Updated sample CSV and Excel `.xlsx` downloads with official institutional templates (8-row Stakeholder roster with categories; 2-row Campaign Manager roster). |
@@ -186,6 +188,12 @@ Below is a detailed log of all enhancements, features, bug fixes, and refinement
   - Exclusive to Campaign Managers; administrators receive a strict 403 Forbidden if attempting to create consultations.
   - 1 to 10 structured qualitative questions per campaign.
   - Participant cohort selector with search, category filtering, and one-click bulk selection.
+  - **Fixed-Height Non-Expanding Textareas**: Textareas for consultation description, objectives, and stakeholder instructions are locked to container width and a comfortable fixed height (`resize: none !important`), eliminating awkward drag expansion while introducing smooth internal vertical scrolling (`overflow-y: auto`) if content exceeds length.
+- **Continuous Progress Persistence & Discard Workflow**:
+  - **Real-Time Auto-Save**: As the campaign manager types details, formulates questions, or adjusts assigned cohorts, a debounced auto-save engine securely caches changes in local storage with a live status pill (`✓ Progress Saved (HH:MM)`).
+  - **Draft Recovery**: If the manager reloads or returns later, an unobtrusive banner confirms that their draft progress was safely restored from their previous session.
+  - **Discard Changes Feature**: Campaign managers can click `Discard Changes` at any time to open a confirmation modal. For new campaigns, this wipes the draft; for edited campaigns, it reverts all fields back to the original database record.
+  - **Navigation Guard**: If a manager attempts to cancel with unsaved progress, a safety modal offers options to `Save Draft & Exit`, `Discard & Exit`, or `Keep Editing`.
 - **Lifecycle Governance**:
   - `DRAFT`: Questions, parameters, and assigned participant cohorts can be freely modified.
   - `OPEN`: Consultation is active; stakeholders receive notification emails containing campaign access codes.

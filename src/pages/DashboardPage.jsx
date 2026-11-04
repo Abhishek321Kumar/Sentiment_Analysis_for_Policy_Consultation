@@ -1550,6 +1550,12 @@ export default function DashboardPage() {
         });
         showToast(`Campaign saved as Draft with ${payload.stakeholderIds?.length || 0} stakeholder(s) assigned.`);
       }
+      try {
+        localStorage.removeItem('potentpolicy_wizard_draft_new');
+        if (editingCampaign?.id) {
+          localStorage.removeItem(`potentpolicy_wizard_draft_edit_${editingCampaign.id}`);
+        }
+      } catch (e) {}
       setEditingCampaign(null);
       setActiveView(portalMode === 'ADMIN' ? 'all_campaigns' : 'my_campaigns');
       refreshAllData();
@@ -1575,6 +1581,12 @@ export default function DashboardPage() {
         });
         showToast('Campaign published successfully! Stakeholder consultation links are live.');
       }
+      try {
+        localStorage.removeItem('potentpolicy_wizard_draft_new');
+        if (editingCampaign?.id) {
+          localStorage.removeItem(`potentpolicy_wizard_draft_edit_${editingCampaign.id}`);
+        }
+      } catch (e) {}
       setEditingCampaign(null);
       setActiveView(portalMode === 'ADMIN' ? 'all_campaigns' : 'my_campaigns');
       refreshAllData();
@@ -5099,8 +5111,17 @@ export default function DashboardPage() {
                   <div style={{ marginBottom: '0.9rem' }}>
                     <label className="dash-label">Description</label>
                     <textarea
-                      rows={3}
                       className="dash-textarea"
+                      style={{
+                        width: '100%',
+                        maxWidth: '100%',
+                        height: '120px',
+                        minHeight: '120px',
+                        maxHeight: '120px',
+                        resize: 'none',
+                        overflowY: 'auto',
+                        boxSizing: 'border-box',
+                      }}
                       value={campaignForm.description}
                       onChange={e => setCampaignForm(p => ({ ...p, description: e.target.value }))}
                     />

@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   FileText, ListFilter, Users, CheckCircle2, AlertCircle, ArrowRight,
-  ArrowLeft, Search, Filter, Plus, Save, Send, Calendar, CheckSquare, Square, Eye
+  ArrowLeft, Search, Filter, Plus, Save, Send, Calendar, CheckSquare, Square, Eye,
+  Trash2, X, RefreshCw
 } from 'lucide-react';
 import CampaignFormBuilder from './CampaignFormBuilder';
 import CampaignPreviewModal from './CampaignPreviewModal';
@@ -25,6 +26,18 @@ export default function CampaignWizard({
   const [currentStep, setCurrentStep] = useState(1);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [validationError, setValidationError] = useState('');
+
+  // Local draft progress persistence key
+  const DRAFT_KEY = initialData?.id
+    ? `potentpolicy_wizard_draft_edit_${initialData.id}`
+    : `potentpolicy_wizard_draft_new`;
+
+  const [lastSavedAt, setLastSavedAt] = useState(null);
+  const [hasDraft, setHasDraft] = useState(false);
+  const [draftRestoredNotice, setDraftRestoredNotice] = useState(false);
+  const [showDiscardModal, setShowDiscardModal] = useState(false);
+  const [showExitModal, setShowExitModal] = useState(false);
+  const isLoadedRef = useRef(false);
 
   // 1. Details State
   const [title, setTitle] = useState(initialData?.title || '');
@@ -145,6 +158,202 @@ export default function CampaignWizard({
     setSelectedStakeholderIds(prev => prev.filter(id => !filteredSet.has(id)));
   };
 
+  // ── Draft Progress Persistence (Auto-Save & Restore) ──
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          const hasSavedData = Boolean(
+            (parsed.title && parsed.title.trim()) ||
+            (parsed.description && parsed.description.trim()) ||
+            (parsed.objectives && parsed.objectives.trim()) ||
+            (parsed.additionalInstructions && parsed.additionalInstructions.trim()) ||
+            parsed.openingDate ||
+            parsed.closingDate ||
+            (Array.isArray(parsed.selectedStakeholderIds) && parsed.selectedStakeholderIds.length > 0) ||
+            (Array.isArray(parsed.questions) && parsed.questions.some(q => q.questionText && q.questionText.trim()))
+          );
+
+          if (hasSavedData) {
+            if (parsed.title !== undefined) setTitle(parsed.title);
+            if (parsed.description !== undefined) setDescription(parsed.description);
+            if (parsed.objectives !== undefined) setObjectives(parsed.objectives);
+            if (parsed.additionalInstructions !== undefined) setAdditionalInstructions(parsed.additionalInstructions);
+            if (parsed.openingDate !== undefined) setOpeningDate(parsed.openingDate);
+            if (parsed.closingDate !== undefined) setClosingDate(parsed.closingDate);
+            if (Array.isArray(parsed.questions) && parsed.questions.length > 0) setQuestions(parsed.questions);
+            if (Array.isArray(parsed.selectedStakeholderIds)) setSelectedStakeholderIds(parsed.selectedStakeholderIds);
+            if (parsed.currentStep >= 1 && parsed.currentStep <= 4) setCurrentStep(parsed.currentStep);
+
+            setLastSavedAt(parsed.savedAt || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+            setHasDraft(true);
+            setDraftRestoredNotice(true);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load draft from localStorage:', err);
+    } finally {
+      isLoadedRef.current = true;
+    }
+  }, [DRAFT_KEY]);
+
+  // Real-time debounced auto-save to localStorage
+  useEffect(() => {
+    if (!isLoadedRef.current) return;
+
+    const hasAnyContent = Boolean(
+      title.trim() ||
+      description.trim() ||
+      objectives.trim() ||
+      additionalInstructions.trim() ||
+      openingDate ||
+      closingDate ||
+      selectedStakeholderIds.length > 0 ||
+      (questions.length > 1 || (questions[0] && questions[0].questionText.trim()))
+    );
+
+    if (!hasAnyContent) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      try {
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const snapshot = {
+          title,
+          description,
+          objectives,
+          additionalInstructions,
+          openingDate,
+          closingDate,
+          questions,
+          selectedStakeholderIds,
+          currentStep,
+          savedAt: timeStr,
+        };
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(snapshot));
+        setLastSavedAt(timeStr);
+        setHasDraft(true);
+      } catch (err) {
+        console.warn('Autosave to localStorage failed:', err);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [
+    DRAFT_KEY,
+    title,
+    description,
+    objectives,
+    additionalInstructions,
+    openingDate,
+    closingDate,
+    questions,
+    selectedStakeholderIds,
+    currentStep
+  ]);
+
+  // Discard changes & clear draft handler
+  const handleDiscardChanges = () => {
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+    } catch (e) {}
+
+    setShowDiscardModal(false);
+    setShowExitModal(false);
+    setHasDraft(false);
+    setLastSavedAt(null);
+    setDraftRestoredNotice(false);
+
+    if (initialData) {
+      // Revert to saved campaign in database
+      setTitle(initialData.title || '');
+      setDescription(initialData.description || '');
+      setObjectives(initialData.objectives || '');
+      setAdditionalInstructions(initialData.additional_instructions || initialData.additionalInstructions || '');
+      setOpeningDate(
+        initialData.opening_date ? new Date(initialData.opening_date).toISOString().split('T')[0] : ''
+      );
+      setClosingDate(
+        initialData.closing_date ? new Date(initialData.closing_date).toISOString().split('T')[0] : ''
+      );
+      if (initialData.questions && Array.isArray(initialData.questions) && initialData.questions.length > 0) {
+        setQuestions(
+          initialData.questions.map((q, idx) => ({
+            id: q.id || idx + 1,
+            questionText: q.question_text || q.questionText || '',
+            questionType: (q.question_type || q.questionType || 'TEXT').toUpperCase(),
+            isRequired: q.is_required !== false && q.isRequired !== false,
+            options: Array.isArray(q.options)
+              ? q.options
+              : typeof q.options === 'string'
+              ? JSON.parse(q.options || '[]')
+              : [],
+            minValue: q.min_value ?? q.minValue ?? 1,
+            maxValue: q.max_value ?? q.maxValue ?? 5,
+            minLength: q.min_length ?? q.minLength ?? 5,
+            maxLength: q.max_length ?? q.maxLength ?? 2000,
+          }))
+        );
+      } else {
+        setQuestions([
+          {
+            id: 1,
+            questionText: '',
+            questionType: 'TEXT',
+            isRequired: true,
+            options: [],
+            minValue: 1,
+            maxValue: 5,
+            minLength: 5,
+            maxLength: 2000,
+          },
+        ]);
+      }
+      if (initialData.participants && Array.isArray(initialData.participants)) {
+        setSelectedStakeholderIds(initialData.participants.map(p => p.id || p.stakeholder_id));
+      } else {
+        setSelectedStakeholderIds([]);
+      }
+      setCurrentStep(1);
+    } else {
+      // New campaign: reset to blank and exit wizard back to dashboard
+      setTitle('');
+      setDescription('');
+      setObjectives('');
+      setAdditionalInstructions('');
+      setOpeningDate('');
+      setClosingDate('');
+      setQuestions([
+        {
+          id: 1,
+          questionText: '',
+          questionType: 'TEXT',
+          isRequired: true,
+          options: [],
+          minValue: 1,
+          maxValue: 5,
+          minLength: 5,
+          maxLength: 2000,
+        },
+      ]);
+      setSelectedStakeholderIds([]);
+      setCurrentStep(1);
+      if (onCancel) onCancel();
+    }
+  };
+
+  const handleCancelClick = () => {
+    if (hasDraft) {
+      setShowExitModal(true);
+    } else {
+      onCancel();
+    }
+  };
+
   // Step 1 Validation
   const validateStep1 = () => {
     if (!title.trim()) {
@@ -258,6 +467,10 @@ export default function CampaignWizard({
       return;
     }
     setValidationError('');
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+    } catch (e) {}
+    setHasDraft(false);
     onSaveDraft(getPayload());
   };
 
@@ -276,6 +489,10 @@ export default function CampaignWizard({
       return;
     }
     setValidationError('');
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+    } catch (e) {}
+    setHasDraft(false);
     onPublish(getPayload());
   };
 
@@ -291,20 +508,52 @@ export default function CampaignWizard({
   return (
     <div className="campaign-wizard animate-fade-in">
       {/* Top Bar */}
-      <div className="dash-action-bar" style={{ marginBottom: '1.25rem' }}>
+      <div className="dash-action-bar" style={{ marginBottom: '1.25rem', alignItems: 'flex-start' }}>
         <div>
-          <h2 className="dash-title">
-            {initialData ? 'Edit Consultation Campaign' : 'Create Consultation Campaign'}
-          </h2>
-          <p className="dash-subtitle">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+            <h2 className="dash-title" style={{ margin: 0 }}>
+              {initialData ? 'Edit Consultation Campaign' : 'Create Consultation Campaign'}
+            </h2>
+            {lastSavedAt && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontSize: '0.74rem',
+                  fontWeight: 600,
+                  color: 'var(--sentiment-positive, #16a34a)',
+                  background: 'rgba(34, 197, 94, 0.08)',
+                  border: '1px solid rgba(34, 197, 94, 0.25)',
+                  padding: '0.2rem 0.55rem',
+                  borderRadius: '12px',
+                }}
+                title="Your progress is automatically saved locally"
+              >
+                <CheckCircle2 size={12} /> Progress Saved ({lastSavedAt})
+              </span>
+            )}
+          </div>
+          <p className="dash-subtitle" style={{ marginTop: '0.25rem', marginBottom: 0 }}>
             Configure consultation policy questions and assign authorised participants from the Stakeholder Directory.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {(hasDraft || title.trim() || description.trim()) && (
+            <button
+              type="button"
+              className="dash-btn-secondary"
+              style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.35)' }}
+              onClick={() => setShowDiscardModal(true)}
+              title="Discard all unsaved progress and clear draft"
+            >
+              <Trash2 size={14} /> Discard Changes
+            </button>
+          )}
           <button
             type="button"
             className="dash-btn-secondary"
-            onClick={onCancel}
+            onClick={handleCancelClick}
           >
             Cancel
           </button>
@@ -318,6 +567,64 @@ export default function CampaignWizard({
           </button>
         </div>
       </div>
+
+      {/* Restored Draft Notice Banner */}
+      {draftRestoredNotice && (
+        <div
+          style={{
+            background: 'rgba(99, 102, 241, 0.08)',
+            border: '1px solid rgba(99, 102, 241, 0.25)',
+            color: 'var(--text-primary)',
+            padding: '0.65rem 0.95rem',
+            borderRadius: '8px',
+            marginBottom: '1.25rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.6rem',
+            fontSize: '0.82rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <FileText size={16} style={{ color: 'var(--brand-accent)' }} />
+            <span>
+              <strong>Draft progress restored</strong> from your last session ({lastSavedAt || 'recent'}). Your edits are preserved.
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={() => setShowDiscardModal(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#ef4444',
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+                fontWeight: 600,
+                textDecoration: 'underline',
+              }}
+            >
+              Discard changes
+            </button>
+            <button
+              type="button"
+              onClick={() => setDraftRestoredNotice(false)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                padding: '0 0.2rem',
+              }}
+              title="Dismiss notice"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Stepper Progress Indicator */}
       <div
@@ -433,9 +740,18 @@ export default function CampaignWizard({
           <div style={{ marginBottom: '1.15rem' }}>
             <label className="dash-label">Consultation Description *</label>
             <textarea
-              rows={3}
               required
               className="dash-textarea"
+              style={{
+                width: '100%',
+                maxWidth: '100%',
+                height: '120px',
+                minHeight: '120px',
+                maxHeight: '120px',
+                resize: 'none',
+                overflowY: 'auto',
+                boxSizing: 'border-box',
+              }}
               placeholder="Provide background context, rationale, and policy background for invited stakeholders..."
               value={description}
               onChange={e => {
@@ -448,9 +764,18 @@ export default function CampaignWizard({
           <div style={{ marginBottom: '1.15rem' }}>
             <label className="dash-label">Consultation Objectives *</label>
             <textarea
-              rows={2}
               required
               className="dash-textarea"
+              style={{
+                width: '100%',
+                maxWidth: '100%',
+                height: '110px',
+                minHeight: '110px',
+                maxHeight: '110px',
+                resize: 'none',
+                overflowY: 'auto',
+                boxSizing: 'border-box',
+              }}
               placeholder="e.g. Gather cross-departmental sentiment on proposed flexible work tiers and identify operational bottlenecks."
               value={objectives}
               onChange={e => {
@@ -492,8 +817,17 @@ export default function CampaignWizard({
           <div style={{ marginBottom: '1.5rem' }}>
             <label className="dash-label">Additional Instructions for Stakeholders (Optional)</label>
             <textarea
-              rows={2}
               className="dash-textarea"
+              style={{
+                width: '100%',
+                maxWidth: '100%',
+                height: '110px',
+                minHeight: '110px',
+                maxHeight: '110px',
+                resize: 'none',
+                overflowY: 'auto',
+                boxSizing: 'border-box',
+              }}
               placeholder="e.g. All responses are confidential and anonymised. Please complete all questions by 5:00 PM."
               value={additionalInstructions}
               onChange={e => setAdditionalInstructions(e.target.value)}
@@ -957,6 +1291,135 @@ export default function CampaignWizard({
         questions={questions}
         orgName={orgName}
       />
+
+      {/* ── Modal: Discard Changes Confirmation ── */}
+      {showDiscardModal && (
+        <div className="dash-modal-backdrop" style={{ zIndex: 9999 }}>
+          <div className="dash-modal animate-fade-in" style={{ maxWidth: '480px' }}>
+            <div className="dash-modal-header" style={{ borderBottom: 'none', paddingBottom: 0, marginBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <div style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '50%',
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  color: '#ef4444',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <Trash2 size={18} />
+                </div>
+                <h3 className="dash-modal-title" style={{ margin: 0, fontSize: '1.15rem' }}>
+                  {initialData ? 'Discard Unsaved Changes?' : 'Discard Draft Consultation?'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDiscardModal(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: 1.55, marginBottom: '1.25rem' }}>
+              {initialData
+                ? 'Are you sure you want to discard your unsaved modifications? All fields will be reverted back to the original saved campaign details.'
+                : 'Are you sure you want to discard this draft? All entered consultation details, questions, and stakeholder selections will be permanently cleared.'}
+            </p>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem' }}>
+              <button
+                type="button"
+                className="dash-btn-secondary"
+                onClick={() => setShowDiscardModal(false)}
+              >
+                Keep Editing
+              </button>
+              <button
+                type="button"
+                className="dash-btn-primary"
+                style={{ background: '#ef4444', borderColor: '#ef4444', color: '#fff' }}
+                onClick={handleDiscardChanges}
+              >
+                <Trash2 size={14} /> Discard Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Exit / Cancel Navigation Guard ── */}
+      {showExitModal && (
+        <div className="dash-modal-backdrop" style={{ zIndex: 9999 }}>
+          <div className="dash-modal animate-fade-in" style={{ maxWidth: '480px' }}>
+            <div className="dash-modal-header" style={{ borderBottom: 'none', paddingBottom: 0, marginBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <div style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '50%',
+                  background: 'rgba(99, 102, 241, 0.12)',
+                  color: 'var(--brand-accent)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <AlertCircle size={18} />
+                </div>
+                <h3 className="dash-modal-title" style={{ margin: 0, fontSize: '1.15rem' }}>
+                  Unsaved Consultation Progress
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowExitModal(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: 1.55, marginBottom: '1.25rem' }}>
+              You have in-progress edits for this consultation. Would you like to keep your draft saved so you can resume later, or discard your changes?
+            </p>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="dash-btn-secondary"
+                onClick={() => setShowExitModal(false)}
+              >
+                Keep Editing
+              </button>
+              <button
+                type="button"
+                className="dash-btn-secondary"
+                style={{ color: '#ef4444' }}
+                onClick={() => {
+                  setShowExitModal(false);
+                  handleDiscardChanges();
+                }}
+              >
+                Discard &amp; Exit
+              </button>
+              <button
+                type="button"
+                className="dash-btn-primary"
+                onClick={() => {
+                  setShowExitModal(false);
+                  onCancel();
+                }}
+              >
+                Save Draft &amp; Exit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

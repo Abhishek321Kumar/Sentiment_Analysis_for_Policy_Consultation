@@ -891,6 +891,26 @@
   color: var(--text-primary);
   font-family: 'Inter', sans-serif;
   font-size: 0.86rem;
+  box-sizing: border-box;
+}
+
+.dash-textarea {
+  resize: none !important;
+  overflow-y: auto !important;
+  line-height: 1.5;
+}
+
+/* Campaign creation & feedback textarea: fixed height & scrollbar without expanding */
+.campaign-wizard textarea.dash-textarea,
+.campaign-wizard .dash-textarea {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  height: 120px;
+  min-height: 120px;
+  max-height: 120px;
+  resize: none !important;
+  overflow-y: auto !important;
 }
 
 .dash-input:focus,

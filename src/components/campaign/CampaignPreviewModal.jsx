@@ -161,12 +161,21 @@ export default function CampaignPreviewModal({
                     {qType === 'TEXT' && (
                       <div>
                         <textarea
-                          rows={3}
                           className="dash-textarea"
                           placeholder="Type your feedback here..."
                           value={currentVal || ''}
                           onChange={e => setDummyAnswers(p => ({ ...p, [qId]: e.target.value }))}
-                          style={{ width: '100%', fontSize: '0.86rem' }}
+                          style={{
+                            width: '100%',
+                            maxWidth: '100%',
+                            height: '110px',
+                            minHeight: '110px',
+                            maxHeight: '110px',
+                            resize: 'none',
+                            overflowY: 'auto',
+                            boxSizing: 'border-box',
+                            fontSize: '0.86rem'
+                          }}
                         />
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
                           <span>Minimum: {q.minLength || 5} chars</span>
