@@ -324,7 +324,8 @@ router.post('/enter', participateRateLimiter, async (req, res) => {
     // 3. Check stakeholder is in this campaign's participant list
     // Note: A stakeholder previously removed (is_active=false) stays eligible for campaigns they were already selected for!
     const participantRes = await db.query(
-      `SELECT s.id as stakeholder_id, s.first_name, s.last_name
+      `SELECT cp.id as participation_id, cp.invitation_token, cp.submission_status, cp.submitted_at,
+              s.id as stakeholder_id, s.first_name, s.last_name
        FROM campaign_participants cp
        JOIN stakeholders s ON cp.stakeholder_id = s.id
        WHERE cp.campaign_id = $1 AND (LOWER(s.email) = $2 OR LOWER(COALESCE(s.alternate_email, '')) = $2)`,
@@ -337,6 +338,26 @@ router.post('/enter', participateRateLimiter, async (req, res) => {
 
     const stakeholder = participantRes.rows[0];
 
+    // Check duplicate submission
+    const existingSubmission = await db.query(
+      `SELECT id FROM feedback_submissions WHERE campaign_id = $1 AND stakeholder_id = $2`,
+      [campaign.id, stakeholder.stakeholder_id]
+    );
+
+    if (stakeholder.submission_status === 'SUBMITTED' || stakeholder.submitted_at !== null || existingSubmission.rows.length > 0) {
+      return res.status(409).json({
+        error: 'You have already submitted feedback for this consultation. Each stakeholder is permitted one submission.',
+        alreadySubmitted: true,
+      });
+    }
+
+    // Ensure participation has an invitation token
+    let invToken = stakeholder.invitation_token;
+    if (!invToken) {
+      invToken = cryptoUtils.generateInvitationToken();
+      await db.query('UPDATE campaign_participants SET invitation_token = $1 WHERE id = $2', [invToken, stakeholder.participation_id]);
+    }
+
     // 4. Generate short-lived participation JWT (2 hours)
     const participationToken = authMiddleware.generateParticipationToken({
       campaignId: campaign.id,
@@ -344,30 +365,50 @@ router.post('/enter', participateRateLimiter, async (req, res) => {
       email: cleanEmail,
     });
 
-    // 5. Fetch campaign questions
+    // 5. Fetch campaign questions with full schema (types, options, validations)
     const questionsRes = await db.query(
-      `SELECT id, question_text, question_order
+      `SELECT id, question_text, question_order, question_type, is_required, options, min_value, max_value, min_length, max_length
        FROM campaign_questions
        WHERE campaign_id = $1
        ORDER BY question_order ASC`,
       [campaign.id]
     );
 
+    const questions = questionsRes.rows.map(q => {
+      let opts = [];
+      try {
+        opts = typeof q.options === 'string' ? JSON.parse(q.options) : (q.options || []);
+      } catch {
+        opts = [];
+      }
+      return {
+        id: q.id,
+        questionText: q.question_text,
+        questionOrder: q.question_order,
+        questionType: (q.question_type || 'TEXT').toUpperCase(),
+        isRequired: q.is_required !== false,
+        options: opts,
+        minValue: q.min_value ?? 1,
+        maxValue: q.max_value ?? 5,
+        minLength: q.min_length,
+        maxLength: q.max_length,
+      };
+    });
+
     return res.json({
-      token: participationToken,
+      token: invToken || participationToken,
+      invitationToken: invToken,
+      jwtToken: participationToken,
       campaign: {
         id: campaign.id,
         title: campaign.title,
         description: campaign.description,
         closingDate: campaign.closing_date,
       },
-      questions: questionsRes.rows.map(q => ({
-        id: q.id,
-        questionText: q.question_text,
-        questionOrder: q.question_order,
-      })),
+      questions,
       stakeholder: {
         firstName: stakeholder.first_name,
+        lastName: stakeholder.last_name,
       },
     });
   } catch (err) {
@@ -416,12 +457,12 @@ router.post('/comments', authMiddleware.authenticateParticipation, async (req, r
       });
     }
 
-    // 3. Validate answers: text length 5 to 2000 chars each
+    // 3. Validate answers: text length max 2000 chars each
     for (const ans of answers) {
       const clean = sanitiseText(ans.text);
-      if (clean.length < 5) {
+      if (!clean) {
         return res.status(400).json({
-          error: 'Each answer must contain at least 5 characters.',
+          error: 'Answer response cannot be empty.',
         });
       }
       if (clean.length > 2000) {

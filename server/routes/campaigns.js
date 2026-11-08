@@ -58,47 +58,56 @@ router.post('/', async (req, res) => {
     } = req.body;
     const orgId = req.user.organisationId;
 
-    if (!title || !openingDate || !closingDate) {
-      return res.status(400).json({ error: 'Title, opening date, and closing date are required.' });
+    const isDraft = !publishNow && status === 'DRAFT';
+
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: 'Campaign title is required.' });
     }
 
-    if (!objectives || !objectives.trim()) {
-      return res.status(400).json({ error: 'Consultation Objectives are required.' });
+    let openD, closeD;
+    if (openingDate && closingDate) {
+      openD = new Date(openingDate);
+      closeD = new Date(closingDate);
+      if (closeD < openD) {
+        return res.status(400).json({ error: 'End/closing date must not be earlier than start/opening date.' });
+      }
+    } else if (isDraft) {
+      openD = openingDate ? new Date(openingDate) : new Date();
+      closeD = closingDate ? new Date(closingDate) : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    } else {
+      return res.status(400).json({ error: 'Title, opening date, and closing date are required to publish.' });
     }
 
-    const openD = new Date(openingDate);
-    const closeD = new Date(closingDate);
-    if (closeD < openD) {
-      return res.status(400).json({ error: 'End/closing date must not be earlier than start/opening date.' });
-    }
-
-    if (!Array.isArray(questions) || questions.length < 1 || questions.length > 10) {
-      return res.status(400).json({ error: 'A campaign must have between 1 and 10 questions.' });
-    }
-
-    // Validate each question structure and answer options
-    for (let i = 0; i < questions.length; i++) {
-      const q = questions[i];
-      const qText = typeof q === 'string' ? q : (q.questionText || q.text || '');
-      if (!qText || !qText.trim()) {
-        return res.status(400).json({ error: `Question ${i + 1} text cannot be empty.` });
+    // Enforce question validation for publishing
+    if (!isDraft) {
+      if (!Array.isArray(questions) || questions.length < 1) {
+        return res.status(400).json({ error: 'A campaign must have at least 1 question.' });
       }
 
-      const qType = typeof q === 'object' && q.questionType ? q.questionType.toUpperCase() : 'TEXT';
-      if (['RADIO', 'CHECKBOX', 'DROPDOWN'].includes(qType)) {
-        let opts = [];
-        if (Array.isArray(q.options)) {
-          opts = q.options.map(o => (typeof o === 'string' ? o.trim() : (o.label || o.value || '').trim())).filter(Boolean);
-        } else if (typeof q.options === 'string') {
-          try { opts = JSON.parse(q.options); } catch { opts = []; }
+      // Validate each question structure and answer options
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+        const qText = typeof q === 'string' ? q : (q.questionText || q.text || '');
+        if (!qText || !qText.trim()) {
+          return res.status(400).json({ error: `Question ${i + 1} text cannot be empty.` });
         }
 
-        if (opts.length < 2) {
-          return res.status(400).json({ error: `Question ${i + 1} (${qType}) must have at least 2 non-empty answer options.` });
-        }
-        const set = new Set(opts.map(o => o.toLowerCase()));
-        if (set.size !== opts.length) {
-          return res.status(400).json({ error: `Question ${i + 1} contains duplicate answer options.` });
+        const qType = typeof q === 'object' && q.questionType ? q.questionType.toUpperCase() : 'TEXT';
+        if (['RADIO', 'CHECKBOX', 'DROPDOWN'].includes(qType)) {
+          let opts = [];
+          if (Array.isArray(q.options)) {
+            opts = q.options.map(o => (typeof o === 'string' ? o.trim() : (o.label || o.value || '').trim())).filter(Boolean);
+          } else if (typeof q.options === 'string') {
+            try { opts = JSON.parse(q.options); } catch { opts = []; }
+          }
+
+          if (opts.length < 2) {
+            return res.status(400).json({ error: `Question ${i + 1} (${qType}) must have at least 2 non-empty answer options.` });
+          }
+          const set = new Set(opts.map(o => o.toLowerCase()));
+          if (set.size !== opts.length) {
+            return res.status(400).json({ error: `Question ${i + 1} contains duplicate answer options.` });
+          }
         }
       }
     }
@@ -161,7 +170,10 @@ router.post('/', async (req, res) => {
     // Insert dynamic questions
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
-      const qText = typeof q === 'string' ? q.trim() : (q.questionText || q.text || '').trim();
+      let qText = typeof q === 'string' ? q.trim() : (q.questionText || q.text || '').trim();
+      if (!qText && isDraft) {
+        qText = `Question ${i + 1}`;
+      }
       const qType = typeof q === 'object' && q.questionType ? q.questionType.toUpperCase() : 'TEXT';
       const isReq = typeof q === 'object' && typeof q.isRequired === 'boolean' ? q.isRequired : true;
 
@@ -196,6 +208,45 @@ router.post('/', async (req, res) => {
          VALUES ($1, $2, $3, $4)`,
         [campaign.id, shId, initialStatus === 'OPEN' ? 'SENT' : 'PENDING', token]
       );
+    }
+
+    // If publishing immediately as OPEN, dispatch invitation emails to all assigned stakeholders
+    if (initialStatus === 'OPEN' && uniqueShIds.length > 0) {
+      try {
+        const orgRes = await db.query('SELECT name FROM organisations WHERE id = $1', [orgId]);
+        const orgName = orgRes.rows[0]?.name || 'PotentPolicy';
+
+        const participantsRes = await db.query(
+          `SELECT s.first_name, s.email, cp.invitation_token
+           FROM campaign_participants cp
+           JOIN stakeholders s ON cp.stakeholder_id = s.id
+           WHERE cp.campaign_id = $1`,
+          [campaign.id]
+        );
+
+        const formattedClosingDate = new Date(closeD).toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        });
+
+        for (const p of participantsRes.rows) {
+          await emailUtils.sendEmail({
+            to: p.email,
+            firstName: p.first_name,
+            template: 'CAMPAIGN_INVITE',
+            data: {
+              title: campaign.title,
+              campaignCode: campaign.campaign_code,
+              orgName,
+              closingDate: formattedClosingDate,
+              participateUrl: `http://localhost:5173/participate?token=${p.invitation_token}`,
+            },
+          });
+        }
+      } catch (emailErr) {
+        console.warn('Failed to dispatch campaign invitation emails on create:', emailErr.message);
+      }
     }
 
     await logActivity(
@@ -490,26 +541,53 @@ router.put('/:id', async (req, res) => {
       stakeholderIds,
     } = req.body;
 
-    if (!title || !openingDate || !closingDate) {
-      return res.status(400).json({ error: 'Title, opening date, and closing date are required.' });
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: 'Campaign title is required.' });
     }
 
-    const openD = new Date(openingDate);
-    const closeD = new Date(closingDate);
-    if (closeD < openD) {
-      return res.status(400).json({ error: 'End/closing date must not be earlier than start/opening date.' });
+    const isDraft = campaign.status === 'DRAFT';
+
+    let openD;
+    let closeD;
+
+    if (isDraft) {
+      openD = openingDate ? new Date(openingDate) : new Date();
+      if (isNaN(openD.getTime())) openD = new Date();
+
+      closeD = closingDate ? new Date(closingDate) : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+      if (isNaN(closeD.getTime())) closeD = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+
+      if (closeD < openD) {
+        closeD = new Date(openD.getTime() + 14 * 24 * 60 * 60 * 1000);
+      }
+    } else {
+      if (!openingDate || !closingDate) {
+        return res.status(400).json({ error: 'Opening date and closing date are required.' });
+      }
+      openD = new Date(openingDate);
+      closeD = new Date(closingDate);
+      if (isNaN(openD.getTime()) || isNaN(closeD.getTime())) {
+        return res.status(400).json({ error: 'Valid opening and closing dates are required.' });
+      }
+      if (closeD < openD) {
+        return res.status(400).json({ error: 'End/closing date must not be earlier than start/opening date.' });
+      }
     }
 
-    if (questions.length < 1 || questions.length > 10) {
-      return res.status(400).json({ error: 'A campaign must have between 1 and 10 questions.' });
+    if (questions.length < 1) {
+      return res.status(400).json({ error: 'A campaign must have at least 1 question.' });
     }
 
     // Validate questions
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
-      const qText = typeof q === 'string' ? q : (q.questionText || q.text || '');
+      let qText = typeof q === 'string' ? q : (q.questionText || q.text || '');
       if (!qText || !qText.trim()) {
-        return res.status(400).json({ error: `Question ${i + 1} text cannot be empty.` });
+        if (isDraft) {
+          qText = `Question ${i + 1}`;
+        } else {
+          return res.status(400).json({ error: `Question ${i + 1} text cannot be empty.` });
+        }
       }
 
       const qType = typeof q === 'object' && q.questionType ? q.questionType.toUpperCase() : 'TEXT';
@@ -521,11 +599,11 @@ router.put('/:id', async (req, res) => {
           try { opts = JSON.parse(q.options); } catch { opts = []; }
         }
 
-        if (opts.length < 2) {
+        if (!isDraft && opts.length < 2) {
           return res.status(400).json({ error: `Question ${i + 1} (${qType}) must have at least 2 non-empty answer options.` });
         }
         const set = new Set(opts.map(o => o.toLowerCase()));
-        if (set.size !== opts.length) {
+        if (!isDraft && set.size !== opts.length) {
           return res.status(400).json({ error: `Question ${i + 1} contains duplicate answer options.` });
         }
       }
@@ -665,13 +743,51 @@ router.put('/:id/participants', async (req, res) => {
         );
       }
     } else {
-      // If OPEN, append new ones
+      // If OPEN, append new ones and dispatch invitations
       for (const shId of newToAdd) {
         const token = cryptoUtils.generateInvitationToken();
         await db.query(
           'INSERT INTO campaign_participants (campaign_id, stakeholder_id, invitation_status, invitation_token) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
           [campaignId, shId, 'SENT', token]
         );
+      }
+
+      if (newToAdd.length > 0) {
+        try {
+          const orgRes = await db.query('SELECT name FROM organisations WHERE id = $1', [orgId]);
+          const orgName = orgRes.rows[0]?.name || 'PotentPolicy';
+
+          const newParticipants = await db.query(
+            `SELECT s.first_name, s.email, cp.invitation_token
+             FROM campaign_participants cp
+             JOIN stakeholders s ON cp.stakeholder_id = s.id
+             WHERE cp.campaign_id = $1 AND s.id = ANY($2)`,
+            [campaignId, newToAdd]
+          );
+
+          const formattedClosingDate = new Date(campaign.closing_date).toLocaleDateString('en-GB', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+          });
+
+          for (const p of newParticipants.rows) {
+            await emailUtils.sendEmail({
+              to: p.email,
+              firstName: p.first_name,
+              template: 'CAMPAIGN_INVITE',
+              data: {
+                title: campaign.title,
+                campaignCode: campaign.campaign_code,
+                orgName,
+                closingDate: formattedClosingDate,
+                participateUrl: `http://localhost:5173/participate?token=${p.invitation_token}`,
+              },
+            });
+          }
+        } catch (mailErr) {
+          console.warn('Failed to dispatch emails to appended participants:', mailErr.message);
+        }
       }
     }
 
@@ -731,14 +847,17 @@ router.post('/:id/open', async (req, res) => {
       [campaignId]
     );
 
-    // Fetch all participants to dispatch invitation emails
+    // Fetch all participants with unique tokens to dispatch invitation emails
     const participants = await db.query(
-      `SELECT s.first_name, s.email
+      `SELECT s.first_name, s.email, cp.invitation_token
        FROM campaign_participants cp
        JOIN stakeholders s ON cp.stakeholder_id = s.id
        WHERE cp.campaign_id = $1`,
       [campaignId]
     );
+
+    const orgRes = await db.query('SELECT name FROM organisations WHERE id = $1', [orgId]);
+    const orgName = orgRes.rows[0]?.name || 'PotentPolicy';
 
     const formattedClosingDate = new Date(campaign.closing_date).toLocaleDateString('en-GB', {
       day: 'numeric',
@@ -747,15 +866,16 @@ router.post('/:id/open', async (req, res) => {
     });
 
     for (const p of participants.rows) {
-      emailUtils.sendEmail({
+      await emailUtils.sendEmail({
         to: p.email,
         firstName: p.first_name,
         template: 'CAMPAIGN_INVITE',
         data: {
           title: campaign.title,
           campaignCode: campaign.campaign_code,
+          orgName,
           closingDate: formattedClosingDate,
-          participateUrl: `http://localhost:5173/participate?code=${campaign.campaign_code}`,
+          participateUrl: `http://localhost:5173/participate?token=${p.invitation_token}`,
         },
       });
     }
@@ -774,6 +894,97 @@ router.post('/:id/open', async (req, res) => {
   } catch (err) {
     console.error('Error opening campaign:', err);
     return res.status(500).json({ error: 'Failed to open campaign.' });
+  }
+});
+
+// ── 6b. POST /api/campaigns/:id/resend-invitations ──
+// Dispatches or resends invitation emails to all assigned participants (or specific stakeholder)
+router.post('/:id/resend-invitations', async (req, res) => {
+  try {
+    const campaignId = parseInt(req.params.id, 10);
+    const orgId = req.user.organisationId;
+    const { stakeholderId } = req.body;
+
+    const campRes = await db.query(
+      'SELECT * FROM campaigns WHERE id = $1 AND organisation_id = $2 AND status != \'DELETED\'',
+      [campaignId, orgId]
+    );
+
+    if (campRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Campaign not found.' });
+    }
+
+    const campaign = campRes.rows[0];
+
+    const orgRes = await db.query('SELECT name FROM organisations WHERE id = $1', [orgId]);
+    const orgName = orgRes.rows[0]?.name || 'PotentPolicy';
+
+    let queryText = `
+      SELECT cp.id as participation_id, cp.invitation_token, cp.submission_status, s.id as stakeholder_id, s.first_name, s.email
+      FROM campaign_participants cp
+      JOIN stakeholders s ON cp.stakeholder_id = s.id
+      WHERE cp.campaign_id = $1
+    `;
+    const params = [campaignId];
+
+    if (stakeholderId) {
+      queryText += ' AND s.id = $2';
+      params.push(parseInt(stakeholderId, 10));
+    }
+
+    const participantsRes = await db.query(queryText, params);
+    const targetParticipants = participantsRes.rows.filter(p => p.submission_status !== 'SUBMITTED');
+
+    if (targetParticipants.length === 0) {
+      return res.status(400).json({ error: 'No awaiting participants found to dispatch invitations.' });
+    }
+
+    const formattedClosingDate = new Date(campaign.closing_date).toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+
+    for (const p of targetParticipants) {
+      let token = p.invitation_token;
+      if (!token) {
+        token = cryptoUtils.generateInvitationToken();
+        await db.query('UPDATE campaign_participants SET invitation_token = $1 WHERE id = $2', [token, p.participation_id]);
+      }
+
+      await emailUtils.sendEmail({
+        to: p.email,
+        firstName: p.first_name,
+        template: 'CAMPAIGN_INVITE',
+        data: {
+          title: campaign.title,
+          campaignCode: campaign.campaign_code,
+          orgName,
+          closingDate: formattedClosingDate,
+          participateUrl: `http://localhost:5173/participate?token=${token}`,
+        },
+      });
+
+      await db.query(
+        "UPDATE campaign_participants SET invitation_status = 'SENT', invited_at = CURRENT_TIMESTAMP WHERE id = $1",
+        [p.participation_id]
+      );
+    }
+
+    await logActivity(
+      orgId,
+      req.user.userId,
+      'INVITATIONS_RESENT',
+      `Dispatched invitation emails for consultation "${campaign.title}" to ${targetParticipants.length} stakeholder(s).`
+    );
+
+    return res.json({
+      message: `Invitation emails dispatched to ${targetParticipants.length} stakeholder(s).`,
+      count: targetParticipants.length,
+    });
+  } catch (err) {
+    console.error('Error resending invitations:', err);
+    return res.status(500).json({ error: 'Failed to send invitations.' });
   }
 });
 

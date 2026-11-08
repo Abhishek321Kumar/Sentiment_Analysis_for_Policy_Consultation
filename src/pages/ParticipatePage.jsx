@@ -51,7 +51,8 @@ export default function ParticipatePage() {
         // Initialize empty answers map
         const initial = {};
         (res.questions || []).forEach(q => {
-          initial[q.id] = q.questionType === 'CHECKBOX' ? [] : '';
+          const type = (q.questionType || q.question_type || 'TEXT').toUpperCase();
+          initial[q.id] = type === 'CHECKBOX' ? [] : '';
         });
         setAnswers(initial);
         setStep('questions');
@@ -99,14 +100,16 @@ export default function ParticipatePage() {
         email: email.trim(),
       });
 
-      setJwtToken(res.token);
+      setToken(res.invitationToken || res.token || '');
+      setJwtToken(res.jwtToken || res.token);
       setCampaign(res.campaign);
       setQuestions(res.questions || []);
       setStakeholder(res.stakeholder || null);
 
       const initial = {};
       (res.questions || []).forEach(q => {
-        initial[q.id] = q.questionType === 'CHECKBOX' ? [] : '';
+        const type = (q.questionType || q.question_type || 'TEXT').toUpperCase();
+        initial[q.id] = type === 'CHECKBOX' ? [] : '';
       });
       setAnswers(initial);
 
@@ -152,7 +155,11 @@ export default function ParticipatePage() {
 
     // Validate required questions
     for (const q of questions) {
-      if (q.isRequired) {
+      const qType = (q.questionType || q.question_type || 'TEXT').toUpperCase();
+      const isReq = q.isRequired !== false && q.is_required !== false;
+      const qTitle = q.questionText || q.question_text || 'Question';
+
+      if (isReq) {
         const val = answers[q.id];
         if (
           val === undefined ||
@@ -160,23 +167,23 @@ export default function ParticipatePage() {
           (typeof val === 'string' && !val.trim()) ||
           (Array.isArray(val) && val.length === 0)
         ) {
-          setSubmitError(`Please provide a response for Question: "${q.questionText}"`);
+          setSubmitError(`Please provide a response for Question: "${qTitle}"`);
           return;
         }
       }
 
       // If open text, validate min/max characters if entered
-      if ((q.questionType || 'TEXT').toUpperCase() === 'TEXT') {
+      if (qType === 'TEXT') {
         const textVal = (answers[q.id] || '').trim();
         if (textVal.length > 0) {
-          const min = q.minLength || 5;
-          const max = q.maxLength || 2000;
+          const min = q.minLength ?? q.min_length ?? 5;
+          const max = q.maxLength ?? q.max_length ?? 2000;
           if (textVal.length < min) {
-            setSubmitError(`Question "${q.questionText}" requires at least ${min} characters.`);
+            setSubmitError(`Question "${qTitle}" requires at least ${min} characters.`);
             return;
           }
           if (textVal.length > max) {
-            setSubmitError(`Question "${q.questionText}" cannot exceed ${max} characters.`);
+            setSubmitError(`Question "${qTitle}" cannot exceed ${max} characters.`);
             return;
           }
         }
@@ -463,10 +470,20 @@ export default function ParticipatePage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.35rem', marginBottom: '2rem' }}>
                 {questions.map((q, idx) => {
                   const qId = q.id;
-                  const qType = (q.questionType || 'TEXT').toUpperCase();
-                  const isReq = q.isRequired !== false;
+                  const qType = (q.questionType || q.question_type || 'TEXT').toUpperCase();
+                  const isReq = q.isRequired !== false && q.is_required !== false;
                   const currentVal = answers[qId];
-                  const options = Array.isArray(q.options) ? q.options : [];
+                  let options = [];
+                  if (Array.isArray(q.options)) {
+                    options = q.options;
+                  } else if (typeof q.options === 'string') {
+                    try {
+                      options = JSON.parse(q.options);
+                    } catch {
+                      options = [];
+                    }
+                  }
+                  const qText = q.questionText || q.question_text || `Question ${idx + 1}`;
 
                   return (
                     <div
@@ -482,7 +499,7 @@ export default function ParticipatePage() {
                       <div style={{ marginBottom: '0.75rem' }}>
                         <label style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)', margin: 0, lineHeight: 1.4 }}>
                           <span style={{ color: 'var(--brand-accent)', marginRight: '0.45rem' }}>Q{idx + 1}.</span>
-                          {q.questionText}
+                          {qText}
                           {isReq && <span style={{ color: 'var(--sentiment-negative)', marginLeft: '0.35rem' }}>*</span>}
                         </label>
                       </div>
@@ -509,8 +526,8 @@ export default function ParticipatePage() {
                             }}
                           />
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
-                            <span>Minimum: {q.minLength || 5} chars</span>
-                            <span>{(currentVal || '').length} / {q.maxLength || 2000} chars</span>
+                            <span>Minimum: {q.minLength ?? q.min_length ?? 5} chars</span>
+                            <span>{(currentVal || '').length} / {q.maxLength ?? q.max_length ?? 2000} chars</span>
                           </div>
                         </div>
                       )}
@@ -528,9 +545,9 @@ export default function ParticipatePage() {
                                 fontSize: '0.88rem',
                                 color: 'var(--text-primary)',
                                 cursor: 'pointer',
-                                padding: '0.5rem 0.75rem',
+                                padding: '0.6rem 0.85rem',
                                 borderRadius: '7px',
-                                background: currentVal === opt ? 'rgba(99, 102, 241, 0.08)' : 'var(--bg-secondary)',
+                                background: currentVal === opt ? 'rgba(194, 65, 12, 0.08)' : 'var(--bg-secondary)',
                                 border: currentVal === opt ? '1px solid var(--brand-accent)' : '1px solid var(--border-color)',
                                 transition: 'all 0.15s ease',
                               }}
@@ -564,9 +581,9 @@ export default function ParticipatePage() {
                                   fontSize: '0.88rem',
                                   color: 'var(--text-primary)',
                                   cursor: 'pointer',
-                                  padding: '0.5rem 0.75rem',
+                                  padding: '0.6rem 0.85rem',
                                   borderRadius: '7px',
-                                  background: isChecked ? 'rgba(99, 102, 241, 0.08)' : 'var(--bg-secondary)',
+                                  background: isChecked ? 'rgba(194, 65, 12, 0.08)' : 'var(--bg-secondary)',
                                   border: isChecked ? '1px solid var(--brand-accent)' : '1px solid var(--border-color)',
                                   transition: 'all 0.15s ease',
                                 }}
@@ -591,7 +608,15 @@ export default function ParticipatePage() {
                           className="dash-select"
                           value={currentVal || ''}
                           onChange={e => handleTextChange(qId, e.target.value)}
-                          style={{ width: '100%', fontSize: '0.88rem' }}
+                          style={{
+                            width: '100%',
+                            fontSize: '0.88rem',
+                            padding: '0.65rem 0.85rem',
+                            borderRadius: '7px',
+                            background: 'var(--bg-secondary)',
+                            border: '1px solid var(--border-color)',
+                            color: 'var(--text-primary)',
+                          }}
                         >
                           <option value="">-- Select an option --</option>
                           {options.map((opt, oIdx) => (
@@ -607,8 +632,8 @@ export default function ParticipatePage() {
                         <div>
                           <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
                             {Array.from(
-                              { length: (q.maxValue || 5) - (q.minValue || 1) + 1 },
-                              (_, i) => (q.minValue || 1) + i
+                              { length: (q.maxValue || q.max_value || 5) - (q.minValue || q.min_value || 1) + 1 },
+                              (_, i) => (q.minValue || q.min_value || 1) + i
                             ).map(num => {
                               const isSelected = String(currentVal) === String(num);
                               return (
@@ -638,8 +663,8 @@ export default function ParticipatePage() {
                             })}
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '0.45rem', maxWidth: '320px' }}>
-                            <span>Lowest ({q.minValue || 1})</span>
-                            <span>Highest ({q.maxValue || 5})</span>
+                            <span>Lowest ({q.minValue || q.min_value || 1})</span>
+                            <span>Highest ({q.maxValue || q.max_value || 5})</span>
                           </div>
                         </div>
                       )}

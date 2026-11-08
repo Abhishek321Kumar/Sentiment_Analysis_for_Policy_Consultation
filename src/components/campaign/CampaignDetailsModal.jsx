@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   X, Copy, Check, Calendar, Users, FileText, ExternalLink,
-  Search, CheckCircle2, Clock, AlertCircle, HelpCircle
+  Search, CheckCircle2, Clock, AlertCircle, HelpCircle, Send
 } from 'lucide-react';
 
 export default function CampaignDetailsModal({
@@ -12,6 +12,7 @@ export default function CampaignDetailsModal({
   participants = [],
   onEditDraft,
   onDelete,
+  onResendInvitations,
 }) {
   if (!isOpen || !campaign) return null;
 
@@ -365,6 +366,16 @@ export default function CampaignDetailsModal({
                 }}
               >
                 Edit Draft Campaign
+              </button>
+            )}
+            {isOpenStatus && onResendInvitations && (
+              <button
+                type="button"
+                className="dash-btn-secondary dash-btn-sm"
+                onClick={() => onResendInvitations(campaign.id)}
+                title="Dispatch or resend invitation emails with unique participation links"
+              >
+                <Send size={12} /> Resend Invitations
               </button>
             )}
           </div>

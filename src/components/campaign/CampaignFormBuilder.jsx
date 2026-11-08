@@ -38,7 +38,6 @@ export default function CampaignFormBuilder({
 
   // Add new question
   const handleAddQuestion = (type = 'TEXT') => {
-    if (questions.length >= 10) return;
     const newQ = {
       id: Date.now() + Math.random(),
       questionText: '',
@@ -63,7 +62,6 @@ export default function CampaignFormBuilder({
 
   // Duplicate question
   const handleDuplicateQuestion = index => {
-    if (questions.length >= 10) return;
     const target = questions[index];
     const duplicated = {
       ...target,
@@ -156,7 +154,7 @@ export default function CampaignFormBuilder({
             Dynamic Consultation Form Builder
           </h4>
           <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            {questions.length} of 10 questions configured &bull; 5 question types supported
+            {questions.length} question(s) configured &bull; 5 question types supported
           </span>
         </div>
 
@@ -170,7 +168,7 @@ export default function CampaignFormBuilder({
             <Eye size={14} /> Preview Form
           </button>
 
-          {!readOnly && !hasExistingSubmissions && questions.length < 10 && (
+          {!readOnly && !hasExistingSubmissions && (
             <button
               type="button"
               className="dash-btn-primary dash-btn-sm"
@@ -274,17 +272,15 @@ export default function CampaignFormBuilder({
                     </button>
 
                     {/* Duplicate */}
-                    {questions.length < 10 && (
-                      <button
-                        type="button"
-                        onClick={() => handleDuplicateQuestion(idx)}
-                        title="Duplicate Question"
-                        className="dash-btn-secondary dash-btn-sm"
-                        style={{ padding: '0.25rem 0.45rem' }}
-                      >
-                        <Copy size={13} />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDuplicateQuestion(idx)}
+                      title="Duplicate Question"
+                      className="dash-btn-secondary dash-btn-sm"
+                      style={{ padding: '0.25rem 0.45rem' }}
+                    >
+                      <Copy size={13} />
+                    </button>
 
                     {/* Delete */}
                     {questions.length > 1 && (
@@ -492,6 +488,29 @@ export default function CampaignFormBuilder({
           );
         })}
       </div>
+
+      {/* Dynamic Add Question button positioned directly below the newest question */}
+      {!readOnly && !hasExistingSubmissions && (
+        <div style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'center' }}>
+          <button
+            type="button"
+            className="dash-btn-primary"
+            onClick={() => handleAddQuestion('TEXT')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.65rem 1.4rem',
+              fontSize: '0.86rem',
+              fontWeight: 600,
+              boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
+              borderRadius: '8px',
+            }}
+          >
+            <Plus size={16} /> Add Question
+          </button>
+        </div>
+      )}
 
       {/* Form Preview Modal */}
       <CampaignPreviewModal

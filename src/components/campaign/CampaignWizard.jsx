@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   FileText, ListFilter, Users, CheckCircle2, AlertCircle, ArrowRight,
   ArrowLeft, Search, Filter, Plus, Save, Send, Calendar, CheckSquare, Square, Eye,
-  Trash2, X, RefreshCw
+  Trash2, X, RefreshCw, Edit3, Clock, ShieldCheck
 } from 'lucide-react';
 import CampaignFormBuilder from './CampaignFormBuilder';
 import CampaignPreviewModal from './CampaignPreviewModal';
@@ -137,6 +137,35 @@ export default function CampaignWizard({
       return true;
     });
   }, [activeStakeholders, selectedStakeholderIds, shSearch, shDeptFilter, shDesigFilter, shCategoryFilter, shViewMode]);
+
+  // Derived Review Cohort Summaries & Pre-flight validations
+  const selectedStakeholders = useMemo(() => {
+    return activeStakeholders.filter(s => selectedStakeholderIds.includes(s.id));
+  }, [activeStakeholders, selectedStakeholderIds]);
+
+  const selectedCategoryCounts = useMemo(() => {
+    const counts = {};
+    selectedStakeholders.forEach(s => {
+      const cat = s.category || 'Employee';
+      counts[cat] = (counts[cat] || 0) + 1;
+    });
+    return counts;
+  }, [selectedStakeholders]);
+
+  const selectedDeptCounts = useMemo(() => {
+    const counts = {};
+    selectedStakeholders.forEach(s => {
+      const dept = s.department || 'General';
+      counts[dept] = (counts[dept] || 0) + 1;
+    });
+    return counts;
+  }, [selectedStakeholders]);
+
+  const isTitleValid = Boolean(title && title.trim());
+  const isDatesValid = Boolean(openingDate && closingDate && new Date(closingDate) >= new Date(openingDate));
+  const isQuestionsValid = Array.isArray(questions) && questions.length > 0 && questions.every(q => q.questionText && q.questionText.trim());
+  const isStakeholdersValid = selectedStakeholderIds.length > 0;
+  const isReadyToPublish = isTitleValid && isDatesValid && isQuestionsValid && isStakeholdersValid;
 
   // Stakeholder Selection Handlers
   const toggleStakeholder = id => {
@@ -364,10 +393,6 @@ export default function CampaignWizard({
       setValidationError('Campaign Description is required.');
       return false;
     }
-    if (!objectives.trim()) {
-      setValidationError('Consultation Objectives are required.');
-      return false;
-    }
     if (!openingDate) {
       setValidationError('Start / Opening Date is required.');
       return false;
@@ -388,8 +413,8 @@ export default function CampaignWizard({
 
   // Step 2 Validation
   const validateStep2 = () => {
-    if (!Array.isArray(questions) || questions.length < 1 || questions.length > 10) {
-      setValidationError('A campaign must contain between 1 and 10 consultation questions.');
+    if (!Array.isArray(questions) || questions.length < 1) {
+      setValidationError('A campaign must contain at least 1 consultation question.');
       return false;
     }
 
@@ -717,7 +742,7 @@ export default function CampaignWizard({
          ══════════════════════════════════════════════════════════════ */}
       {currentStep === 1 && (
         <div className="dash-panel" style={{ maxWidth: '820px', margin: '0 auto' }}>
-          <div className="dash-panel__title">Step 1: Campaign Details &amp; Objectives</div>
+          <div className="dash-panel__title">Step 1: Campaign Details &amp; Timeline</div>
 
           <div style={{ marginBottom: '1.15rem' }}>
             <label className="dash-label">Campaign Title *</label>
@@ -756,30 +781,6 @@ export default function CampaignWizard({
               value={description}
               onChange={e => {
                 setDescription(e.target.value);
-                if (validationError) setValidationError('');
-              }}
-            />
-          </div>
-
-          <div style={{ marginBottom: '1.15rem' }}>
-            <label className="dash-label">Consultation Objectives *</label>
-            <textarea
-              required
-              className="dash-textarea"
-              style={{
-                width: '100%',
-                maxWidth: '100%',
-                height: '110px',
-                minHeight: '110px',
-                maxHeight: '110px',
-                resize: 'none',
-                overflowY: 'auto',
-                boxSizing: 'border-box',
-              }}
-              placeholder="e.g. Gather cross-departmental sentiment on proposed flexible work tiers and identify operational bottlenecks."
-              value={objectives}
-              onChange={e => {
-                setObjectives(e.target.value);
                 if (validationError) setValidationError('');
               }}
             />
@@ -1092,191 +1093,449 @@ export default function CampaignWizard({
       )}
 
       {/* ══════════════════════════════════════════════════════════════
-          STEP 4: REVIEW AND PUBLISH
+          STEP 4: REVIEW AND PUBLISH (CLEAN, INTUITIVE & EXECUTIVE)
          ══════════════════════════════════════════════════════════════ */}
       {currentStep === 4 && (
-        <div style={{ maxWidth: '880px', margin: '0 auto' }}>
-          <div className="dash-overview-grid" style={{ gridTemplateColumns: '1.15fr 1fr', marginBottom: '1.5rem' }}>
-            {/* Left Card: Campaign Summary */}
-            <div className="dash-panel">
-              <div className="dash-panel__title">Campaign Details</div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>
-                  Title
-                </span>
-                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'Outfit, sans-serif' }}>
-                  {title || 'Untitled Campaign'}
+        <div style={{ maxWidth: '980px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          
+          {/* 1. Header Banner & Key Metrics */}
+          <div
+            style={{
+              background: 'linear-gradient(135deg, rgba(35, 39, 42, 0.04) 0%, rgba(194, 65, 12, 0.07) 100%)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '12px',
+              padding: '1.5rem 1.75rem',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.4rem', flexWrap: 'wrap' }}>
+                  <span className="status-pill status-pill--draft" style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Consultation Summary
+                  </span>
+                  {isReadyToPublish && (
+                    <span style={{ fontSize: '0.74rem', color: '#16a34a', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}>
+                      <CheckCircle2 size={13} /> Ready to Publish
+                    </span>
+                  )}
                 </div>
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>
-                  Consultation Window
-                </span>
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <Calendar size={14} color="var(--brand-accent)" />
-                  <span>{openingDate} &mdash; {closingDate}</span>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>
-                  Description
-                </span>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
-                  {description}
+                <h2 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'Outfit, sans-serif' }}>
+                  {title || 'Untitled Consultation Campaign'}
+                </h2>
+                <p style={{ margin: '0.35rem 0 0', fontSize: '0.84rem', color: 'var(--text-secondary)' }}>
+                  Review your consultation details, question flow, and participant cohort before launching.
                 </p>
               </div>
 
-              <div style={{ marginBottom: '1rem' }}>
-                <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>
-                  Objectives
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="dash-btn-secondary"
+                  onClick={() => setPreviewOpen(true)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem' }}
+                >
+                  <Eye size={14} /> Interactive Preview
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Metrics Strip */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: '0.75rem',
+                background: 'var(--bg-card)',
+                padding: '1rem',
+                borderRadius: '9px',
+                border: '1px solid var(--border-color)',
+              }}
+            >
+              <div>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block' }}>
+                  Consultation Window
                 </span>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
-                  {objectives}
+                <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <Calendar size={13} color="var(--brand-accent)" />
+                  <span>{openingDate || 'TBD'} &rarr; {closingDate || 'TBD'}</span>
+                </div>
+              </div>
+
+              <div>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block' }}>
+                  Feedback Questions
+                </span>
+                <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <FileText size={13} color="var(--brand-accent)" />
+                  <span>{questions.length} Question{questions.length !== 1 ? 's' : ''}</span>
+                </div>
+              </div>
+
+              <div>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block' }}>
+                  Target Stakeholders
+                </span>
+                <div style={{ fontSize: '0.88rem', fontWeight: 600, color: selectedStakeholderIds.length > 0 ? 'var(--text-primary)' : 'var(--sentiment-negative)', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <Users size={13} color={selectedStakeholderIds.length > 0 ? 'var(--brand-accent)' : 'var(--sentiment-negative)'} />
+                  <span>{selectedStakeholderIds.length} Stakeholder{selectedStakeholderIds.length !== 1 ? 's' : ''}</span>
+                </div>
+              </div>
+
+              <div>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block' }}>
+                  Access Security
+                </span>
+                <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <ShieldCheck size={13} color="#16a34a" />
+                  <span>Unique Tokens &bull; 1-Vote Cap</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Review Section 1: Campaign Details & Context */}
+          <div className="dash-panel" style={{ padding: '1.35rem 1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  1. Policy Context &amp; Consultation Window
+                </h4>
+                <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>Background rationale and participation timeline</span>
+              </div>
+              <button
+                type="button"
+                className="dash-btn-secondary dash-btn-sm"
+                onClick={() => setCurrentStep(1)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.78rem' }}
+              >
+                <Edit3 size={12} /> Edit Details
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
+              <div>
+                <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>
+                  Consultation Description
+                </span>
+                <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: 1.55, margin: 0, whiteSpace: 'pre-wrap' }}>
+                  {description || 'No description provided.'}
                 </p>
               </div>
 
               {additionalInstructions && (
                 <div>
-                  <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>
-                    Instructions
+                  <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>
+                    Stakeholder Instructions (Optional)
                   </span>
-                  <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: 0 }}>
+                  <div style={{ background: 'var(--bg-secondary)', padding: '0.75rem 0.9rem', borderRadius: '7px', fontSize: '0.82rem', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
                     {additionalInstructions}
-                  </p>
+                  </div>
                 </div>
               )}
             </div>
+          </div>
 
-            {/* Right Card: Questions & Stakeholders Summary */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {/* Questions Summary */}
-              <div className="dash-panel">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                  <div className="dash-panel__title" style={{ margin: 0 }}>
-                    Questions ({questions.length})
-                  </div>
-                  <button
-                    type="button"
-                    className="dash-btn-secondary dash-btn-sm"
-                    onClick={() => setPreviewOpen(true)}
+          {/* 3. Review Section 2: Feedback Form Questions */}
+          <div className="dash-panel" style={{ padding: '1.35rem 1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  2. Consultation Questions ({questions.length})
+                </h4>
+                <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>Configured dynamic questions presented to respondents</span>
+              </div>
+              <div style={{ display: 'flex', gap: '0.45rem' }}>
+                <button
+                  type="button"
+                  className="dash-btn-secondary dash-btn-sm"
+                  onClick={() => setPreviewOpen(true)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.78rem' }}
+                >
+                  <Eye size={12} /> Preview Form
+                </button>
+                <button
+                  type="button"
+                  className="dash-btn-secondary dash-btn-sm"
+                  onClick={() => setCurrentStep(2)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.78rem' }}
+                >
+                  <Edit3 size={12} /> Edit Questions
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '340px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+              {questions.map((q, idx) => {
+                const qType = (q.questionType || 'TEXT').toUpperCase();
+                const isReq = q.isRequired !== false;
+                const opts = Array.isArray(q.options) ? q.options : [];
+
+                return (
+                  <div
+                    key={q.id || idx}
+                    style={{
+                      padding: '0.85rem 1rem',
+                      background: 'var(--bg-secondary)',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-color)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.45rem',
+                    }}
                   >
-                    <Eye size={13} /> Preview
-                  </button>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.45rem' }}>
+                        <span style={{ color: 'var(--brand-accent)', fontWeight: 700, fontSize: '0.88rem' }}>
+                          Q{idx + 1}.
+                        </span>
+                        <span style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' }}>
+                          {q.questionText || 'Untitled Question'}
+                        </span>
+                        {isReq && <span style={{ color: 'var(--sentiment-negative)', fontWeight: 700 }}>*</span>}
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
+                        <span className="dash-badge dash-badge--open" style={{ fontSize: '0.68rem', padding: '0.15rem 0.5rem', fontWeight: 600 }}>
+                          {qType}
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: isReq ? 'var(--text-secondary)' : 'var(--text-muted)' }}>
+                          {isReq ? 'Mandatory' : 'Optional'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Options or parameters preview */}
+                    {['RADIO', 'CHECKBOX', 'DROPDOWN'].includes(qType) && opts.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginTop: '0.2rem' }}>
+                        {opts.map((opt, oIdx) => (
+                          <span
+                            key={oIdx}
+                            style={{
+                              fontSize: '0.72rem',
+                              padding: '0.15rem 0.45rem',
+                              background: 'var(--bg-card)',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '4px',
+                              color: 'var(--text-secondary)',
+                            }}
+                          >
+                            &bull; {opt}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {qType === 'RATING' && (
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                        Scale: {q.minValue || 1} to {q.maxValue || 5}
+                      </div>
+                    )}
+
+                    {qType === 'TEXT' && (
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                        Length: {q.minLength || 5} to {q.maxLength || 2000} characters
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 4. Review Section 3: Target Stakeholders Cohort */}
+          <div className="dash-panel" style={{ padding: '1.35rem 1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  3. Target Stakeholder Cohort ({selectedStakeholderIds.length} Selected)
+                </h4>
+                <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                  Stakeholders from institutional directory who receive secure consultation links
+                </span>
+              </div>
+              <button
+                type="button"
+                className="dash-btn-secondary dash-btn-sm"
+                onClick={() => setCurrentStep(3)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.78rem' }}
+              >
+                <Edit3 size={12} /> Edit Cohort
+              </button>
+            </div>
+
+            {selectedStakeholderIds.length === 0 ? (
+              <div
+                style={{
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid var(--sentiment-negative)',
+                  padding: '1rem 1.25rem',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  color: 'var(--sentiment-negative)',
+                  fontSize: '0.84rem',
+                }}
+              >
+                <AlertCircle size={18} />
+                <div>
+                  <strong>No Stakeholders Selected:</strong> You can save this campaign as a <strong>Draft</strong> anytime. To publish now, please return to Step 3 and select at least one active stakeholder.
+                </div>
+              </div>
+            ) : (
+              <div>
+                {/* Cohort Composition Summary */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
+                  {Object.entries(selectedCategoryCounts).map(([cat, count]) => (
+                    <span
+                      key={cat}
+                      style={{
+                        fontSize: '0.75rem',
+                        padding: '0.25rem 0.6rem',
+                        borderRadius: '6px',
+                        background: 'var(--bg-secondary)',
+                        border: '1px solid var(--border-color)',
+                        color: 'var(--text-primary)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {cat}: <strong>{count}</strong>
+                    </span>
+                  ))}
+                  {Object.entries(selectedDeptCounts).slice(0, 5).map(([dept, count]) => (
+                    <span
+                      key={dept}
+                      style={{
+                        fontSize: '0.75rem',
+                        padding: '0.25rem 0.6rem',
+                        borderRadius: '6px',
+                        background: 'rgba(194, 65, 12, 0.08)',
+                        border: '1px solid rgba(194, 65, 12, 0.25)',
+                        color: 'var(--brand-accent)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {dept}: {count}
+                    </span>
+                  ))}
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '180px', overflowY: 'auto' }}>
-                  {questions.map((q, idx) => (
+                {/* Stakeholder Cards Scroll Area */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.65rem', maxHeight: '240px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+                  {selectedStakeholders.map(s => (
                     <div
-                      key={idx}
+                      key={s.id}
                       style={{
-                        padding: '0.55rem 0.75rem',
+                        padding: '0.65rem 0.85rem',
                         background: 'var(--bg-secondary)',
-                        borderRadius: '6px',
+                        borderRadius: '7px',
                         border: '1px solid var(--border-color)',
-                        fontSize: '0.82rem',
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
-                        gap: '0.5rem',
+                        fontSize: '0.82rem',
                       }}
                     >
-                      <span style={{ fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {idx + 1}. {q.questionText || 'Question'}
-                      </span>
-                      <span className="dash-badge dash-badge--open" style={{ fontSize: '0.68rem', padding: '0.15rem 0.45rem' }}>
-                        {q.questionType || 'TEXT'}
+                      <div>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {s.first_name} {s.last_name}
+                        </div>
+                        <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                          {s.designation || 'Member'} &bull; {s.department || 'General'}
+                        </div>
+                      </div>
+                      <span className="dash-badge dash-badge--open" style={{ fontSize: '0.66rem', padding: '0.15rem 0.45rem' }}>
+                        {s.category || 'Employee'}
                       </span>
                     </div>
                   ))}
                 </div>
               </div>
-
-              {/* Stakeholders Summary */}
-              <div className="dash-panel">
-                <div className="dash-panel__title">
-                  Selected Stakeholders ({selectedStakeholderIds.length})
-                </div>
-
-                {selectedStakeholderIds.length === 0 ? (
-                  <div style={{ fontSize: '0.82rem', color: 'var(--sentiment-negative)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <AlertCircle size={15} />
-                    <span>No stakeholders selected. You can save as Draft, or select stakeholders before publishing.</span>
-                  </div>
-                ) : (
-                  <div>
-                    <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '0.6rem' }}>
-                      {selectedStakeholderIds.length} active stakeholders will be assigned unique, secure invitation links upon publishing.
-                    </p>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', maxHeight: '100px', overflowY: 'auto' }}>
-                      {activeStakeholders
-                        .filter(s => selectedStakeholderIds.includes(s.id))
-                        .slice(0, 15)
-                        .map(s => (
-                          <span
-                            key={s.id}
-                            style={{
-                              fontSize: '0.74rem',
-                              background: 'var(--bg-secondary)',
-                              padding: '0.2rem 0.55rem',
-                              borderRadius: '4px',
-                              border: '1px solid var(--border-color)',
-                              color: 'var(--text-primary)',
-                            }}
-                          >
-                            {s.first_name} {s.last_name}
-                          </span>
-                        ))}
-                      {selectedStakeholderIds.length > 15 && (
-                        <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', alignSelf: 'center' }}>
-                          +{selectedStakeholderIds.length - 15} more
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* Action Footer */}
+          {/* 5. Pre-flight Readiness Checklist */}
+          <div
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '10px',
+              padding: '1rem 1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.85rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap', fontSize: '0.82rem' }}>
+              <span style={{ fontWeight: 700, color: 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                <CheckSquare size={15} color="var(--brand-accent)" /> Pre-flight Verification:
+              </span>
+              <span style={{ color: isTitleValid ? '#16a34a' : 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                <CheckCircle2 size={13} /> Title &amp; Context
+              </span>
+              <span style={{ color: isDatesValid ? '#16a34a' : 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                <CheckCircle2 size={13} /> Dates Defined
+              </span>
+              <span style={{ color: isQuestionsValid ? '#16a34a' : 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                <CheckCircle2 size={13} /> {questions.length} Question(s)
+              </span>
+              <span style={{ color: isStakeholdersValid ? '#16a34a' : 'var(--sentiment-negative)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                {isStakeholdersValid ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
+                {selectedStakeholderIds.length} Stakeholder(s)
+              </span>
+            </div>
+
+            <span style={{ fontSize: '0.78rem', color: isReadyToPublish ? '#16a34a' : 'var(--text-muted)', fontWeight: 600 }}>
+              {isReadyToPublish ? 'All systems ready for launch' : 'Can be saved as Draft'}
+            </span>
+          </div>
+
+          {/* 6. Clean Navigation & Action Footer */}
           <div
             style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
               background: 'var(--bg-card)',
-              padding: '1.25rem',
+              padding: '1.25rem 1.5rem',
               borderRadius: '10px',
               border: '1px solid var(--border-color)',
+              flexWrap: 'wrap',
+              gap: '0.85rem',
             }}
           >
-            <button
-              type="button"
-              className="dash-btn-secondary"
-              onClick={() => setCurrentStep(1)}
-            >
-              <ArrowLeft size={14} /> Go Back and Edit
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                type="button"
+                className="dash-btn-secondary"
+                onClick={() => setCurrentStep(3)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+              >
+                <ArrowLeft size={14} /> Back to Stakeholders
+              </button>
+            </div>
 
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
               <button
                 type="button"
                 className="dash-btn-secondary"
                 disabled={saving}
                 onClick={handleSaveDraftClick}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
               >
                 <Save size={14} /> Save as Draft
               </button>
               <button
                 type="button"
                 className="dash-btn-primary"
-                disabled={saving || selectedStakeholderIds.length === 0}
+                disabled={saving || !isReadyToPublish}
                 onClick={handlePublishClick}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', padding: '0.65rem 1.4rem' }}
+                title={!isReadyToPublish ? 'Select at least one stakeholder and complete required fields to publish' : undefined}
               >
-                <Send size={14} /> {saving ? 'Publishing...' : 'Publish Campaign'}
+                <Send size={14} /> {saving ? 'Publishing...' : 'Publish Consultation Campaign'}
               </button>
             </div>
           </div>

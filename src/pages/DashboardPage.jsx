@@ -500,6 +500,33 @@ export default function DashboardPage() {
   const [deletedCampaigns, setDeletedCampaigns] = useState([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
 
+  // In-Progress Consultation Draft State (auto-saved in localStorage)
+  const [localDraftInfo, setLocalDraftInfo] = useState(null);
+
+  const checkLocalDraft = () => {
+    try {
+      const raw = localStorage.getItem('potentpolicy_wizard_draft_new');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const hasContent = Boolean(
+          (parsed.title && parsed.title.trim()) ||
+          (parsed.description && parsed.description.trim()) ||
+          (Array.isArray(parsed.questions) && parsed.questions.some(q => q.questionText && q.questionText.trim()))
+        );
+        if (hasContent) {
+          setLocalDraftInfo({
+            title: parsed.title?.trim() || 'Untitled Consultation Campaign',
+            savedAt: parsed.savedAt || 'recently',
+            questionCount: Array.isArray(parsed.questions) ? parsed.questions.length : 1,
+            stakeholderCount: Array.isArray(parsed.selectedStakeholderIds) ? parsed.selectedStakeholderIds.length : 0,
+          });
+          return;
+        }
+      }
+    } catch (e) {}
+    setLocalDraftInfo(null);
+  };
+
   const [managers, setManagers] = useState([]);
   const [stakeholders, setStakeholders] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
@@ -765,6 +792,7 @@ export default function DashboardPage() {
     fetchCampaigns();
     fetchMembers();
     fetchOrgProfile();
+    checkLocalDraft();
   };
 
   useEffect(() => {
@@ -1466,7 +1494,6 @@ export default function DashboardPage() {
 
   // Campaign Questions Helpers
   const handleAddQuestion = () => {
-    if (campaignForm.questions.length >= 10) return;
     setCampaignForm(p => ({ ...p, questions: [...p.questions, ''] }));
   };
 
@@ -1693,6 +1720,16 @@ export default function DashboardPage() {
     }
   };
 
+  const handleResendInvitations = async id => {
+    try {
+      const res = await api.post(`/campaigns/${id}/resend-invitations`);
+      showToast(res.message);
+      refreshAllData();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
   const handleCloseCampaign = async id => {
     if (
       !window.confirm(
@@ -1847,7 +1884,6 @@ export default function DashboardPage() {
   const managerMenuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'my_campaigns', label: 'My Campaigns', icon: FolderKanban, badge: campaigns.length },
-    { id: 'create_campaign', label: 'Create Campaign', icon: Plus },
     { id: 'personal_profile', label: 'Profile', icon: User },
   ];
 
@@ -1888,7 +1924,7 @@ export default function DashboardPage() {
 
           {activeMenuItems.map(item => {
             const IconComp = item.icon;
-            const isActive = activeView === item.id;
+            const isActive = activeView === item.id || (item.id === 'my_campaigns' && activeView === 'create_campaign');
             return (
               <button
                 key={item.id}
@@ -1896,9 +1932,6 @@ export default function DashboardPage() {
                 className={`dash-nav-item ${isActive ? 'active' : ''}`}
                 onClick={() => {
                   setFilterByManagerId(null);
-                  if (item.id === 'create_campaign') {
-                    setEditingCampaign(null);
-                  }
                   setActiveView(item.id);
                 }}
                 title={sidebarCollapsed ? item.label : undefined}
@@ -2294,6 +2327,80 @@ export default function DashboardPage() {
                   <div className="dash-stat-card__meta">Active stakeholders maintained by Admin</div>
                 </div>
               </div>
+
+              {localDraftInfo && (
+                <div
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(194, 65, 12, 0.08) 0%, rgba(35, 39, 42, 0.04) 100%)',
+                    border: '1px solid rgba(194, 65, 12, 0.28)',
+                    borderRadius: '10px',
+                    padding: '1rem 1.25rem',
+                    marginBottom: '1.25rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '0.85rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                    <div
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '8px',
+                        background: 'rgba(194, 65, 12, 0.15)',
+                        color: 'var(--brand-accent)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <FileText size={18} />
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' }}>
+                          In-Progress Draft: &ldquo;{localDraftInfo.title}&rdquo;
+                        </span>
+                        <span className="status-pill status-pill--draft" style={{ fontSize: '0.7rem', padding: '0.15rem 0.45rem' }}>
+                          Auto-saved locally ({localDraftInfo.savedAt})
+                        </span>
+                      </div>
+                      <p style={{ margin: '0.2rem 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        {localDraftInfo.questionCount} question(s) &bull; {localDraftInfo.stakeholderCount} stakeholder(s) selected &bull; Resume right where you left off.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      className="dash-btn-secondary dash-btn-sm"
+                      onClick={() => {
+                        try {
+                          localStorage.removeItem('potentpolicy_wizard_draft_new');
+                        } catch (e) {}
+                        setLocalDraftInfo(null);
+                        showToast('In-progress draft discarded.');
+                      }}
+                    >
+                      <Trash2 size={13} /> Discard Draft
+                    </button>
+                    <button
+                      type="button"
+                      className="dash-btn-primary dash-btn-sm"
+                      onClick={() => {
+                        setEditingCampaign(null);
+                        setActiveView('create_campaign');
+                      }}
+                    >
+                      Resume Consultation &rarr;
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="dash-panel">
                 <div className="dash-panel__title">
@@ -2906,14 +3013,88 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Sub-tabs: Active Campaigns vs. Deleted Campaign History */}
+              {localDraftInfo && portalMode === 'MANAGER' && (
+                <div
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(194, 65, 12, 0.08) 0%, rgba(35, 39, 42, 0.04) 100%)',
+                    border: '1px solid rgba(194, 65, 12, 0.28)',
+                    borderRadius: '10px',
+                    padding: '1rem 1.25rem',
+                    marginBottom: '1.25rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '0.85rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                    <div
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '8px',
+                        background: 'rgba(194, 65, 12, 0.15)',
+                        color: 'var(--brand-accent)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <FileText size={18} />
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' }}>
+                          In-Progress Draft: &ldquo;{localDraftInfo.title}&rdquo;
+                        </span>
+                        <span className="status-pill status-pill--draft" style={{ fontSize: '0.7rem', padding: '0.15rem 0.45rem' }}>
+                          Auto-saved locally ({localDraftInfo.savedAt})
+                        </span>
+                      </div>
+                      <p style={{ margin: '0.2rem 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        {localDraftInfo.questionCount} question(s) &bull; {localDraftInfo.stakeholderCount} stakeholder(s) selected &bull; Resume right where you left off.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      className="dash-btn-secondary dash-btn-sm"
+                      onClick={() => {
+                        try {
+                          localStorage.removeItem('potentpolicy_wizard_draft_new');
+                        } catch (e) {}
+                        setLocalDraftInfo(null);
+                        showToast('In-progress draft discarded.');
+                      }}
+                    >
+                      <Trash2 size={13} /> Discard Draft
+                    </button>
+                    <button
+                      type="button"
+                      className="dash-btn-primary dash-btn-sm"
+                      onClick={() => {
+                        setEditingCampaign(null);
+                        setActiveView('create_campaign');
+                      }}
+                    >
+                      Resume Consultation &rarr;
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Sub-tabs: Consultations & Drafts vs. Deleted Campaign History */}
               <div className="dash-subtabs">
                 <button
                   type="button"
                   className={`dash-subtab-btn ${campaignSubTab === 'active' ? 'active' : ''}`}
                   onClick={() => setCampaignSubTab('active')}
                 >
-                  <FolderKanban size={15} /> Active &amp; Completed Campaigns ({campaigns.length})
+                  <FolderKanban size={15} /> Consultations &amp; Drafts ({campaigns.length})
                 </button>
                 <button
                   type="button"
@@ -3199,6 +3380,14 @@ export default function DashboardPage() {
                                     <button
                                       type="button"
                                       className="dash-btn-secondary dash-btn-sm"
+                                      onClick={() => handleResendInvitations(c.id)}
+                                      title="Resend invitation emails with participation links to assigned stakeholders"
+                                    >
+                                      <Send size={12} /> Resend Invites
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="dash-btn-secondary dash-btn-sm"
                                       onClick={() => openEditCampaign(c)}
                                     >
                                       Extend Date
@@ -3251,6 +3440,7 @@ export default function DashboardPage() {
           {activeView === 'create_campaign' && (
             <div className="animate-fade-in">
               <CampaignWizard
+                key={editingCampaign?.id || 'new'}
                 initialData={editingCampaign}
                 stakeholders={stakeholders}
                 onSaveDraft={handleSaveCampaignDraft}
@@ -4890,6 +5080,7 @@ export default function DashboardPage() {
           setShowCampaignDetailsModal(false);
           openDeleteCampaignModal(c);
         }}
+        onResendInvitations={handleResendInvitations}
       />
 
       {/* ══════════════════════════════════════════════════════════════
@@ -5124,15 +5315,6 @@ export default function DashboardPage() {
                       }}
                       value={campaignForm.description}
                       onChange={e => setCampaignForm(p => ({ ...p, description: e.target.value }))}
-                    />
-                  </div>
-                  <div style={{ marginBottom: '0.9rem' }}>
-                    <label className="dash-label">Objectives</label>
-                    <input
-                      type="text"
-                      className="dash-input"
-                      value={campaignForm.objectives}
-                      onChange={e => setCampaignForm(p => ({ ...p, objectives: e.target.value }))}
                     />
                   </div>
                   <div className="dash-form-grid" style={{ marginBottom: '1rem' }}>
