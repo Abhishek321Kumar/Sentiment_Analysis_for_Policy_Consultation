@@ -240,7 +240,7 @@ router.post('/', async (req, res) => {
               campaignCode: campaign.campaign_code,
               orgName,
               closingDate: formattedClosingDate,
-              participateUrl: `http://localhost:5173/participate?token=${p.invitation_token}`,
+              participateUrl: `http://localhost:5173/participate?code=${campaign.campaign_code}`,
             },
           });
         }
@@ -295,9 +295,29 @@ router.get('/', async (req, res) => {
     const campaigns = campaignsRes.rows;
 
     for (const c of campaigns) {
-      const respCount = await db.query('SELECT COUNT(*) FROM comments WHERE campaign_id = $1', [c.id]);
+      const respCount = await db.query(
+        `SELECT COUNT(*) FROM (
+          SELECT fa.id FROM feedback_answers fa
+          JOIN feedback_submissions fs ON fa.submission_id = fs.id
+          WHERE fs.campaign_id = $1
+          UNION ALL
+          SELECT c.id FROM comments c
+          WHERE c.campaign_id = $1
+            AND NOT EXISTS (SELECT 1 FROM feedback_submissions fs2 WHERE fs2.campaign_id = $1)
+        ) r`,
+        [c.id]
+      );
       const partCount = await db.query('SELECT COUNT(*) FROM campaign_participants WHERE campaign_id = $1', [c.id]);
-      const subShCount = await db.query('SELECT COUNT(DISTINCT stakeholder_id) FROM comments WHERE campaign_id = $1', [c.id]);
+      const subShCount = await db.query(
+        `SELECT COUNT(DISTINCT stakeholder_id) FROM (
+          SELECT stakeholder_id FROM feedback_submissions WHERE campaign_id = $1
+          UNION
+          SELECT stakeholder_id FROM comments WHERE campaign_id = $1
+          UNION
+          SELECT stakeholder_id FROM campaign_participants WHERE campaign_id = $1 AND (submission_status = 'SUBMITTED' OR submitted_at IS NOT NULL)
+        ) s`,
+        [c.id]
+      );
       c.response_count = parseInt(respCount.rows[0]?.count || '0', 10);
       c.participant_count = parseInt(partCount.rows[0]?.count || '0', 10);
       c.participated_count = parseInt(subShCount.rows[0]?.count || '0', 10);
@@ -781,7 +801,7 @@ router.put('/:id/participants', async (req, res) => {
                 campaignCode: campaign.campaign_code,
                 orgName,
                 closingDate: formattedClosingDate,
-                participateUrl: `http://localhost:5173/participate?token=${p.invitation_token}`,
+                participateUrl: `http://localhost:5173/participate?code=${campaign.campaign_code}`,
               },
             });
           }
@@ -875,7 +895,7 @@ router.post('/:id/open', async (req, res) => {
           campaignCode: campaign.campaign_code,
           orgName,
           closingDate: formattedClosingDate,
-          participateUrl: `http://localhost:5173/participate?token=${p.invitation_token}`,
+          participateUrl: `http://localhost:5173/participate?code=${campaign.campaign_code}`,
         },
       });
     }
@@ -961,7 +981,7 @@ router.post('/:id/resend-invitations', async (req, res) => {
           campaignCode: campaign.campaign_code,
           orgName,
           closingDate: formattedClosingDate,
-          participateUrl: `http://localhost:5173/participate?token=${token}`,
+          participateUrl: `http://localhost:5173/participate?code=${campaign.campaign_code}`,
         },
       });
 
@@ -1100,6 +1120,14 @@ router.delete('/:id', async (req, res) => {
       [campaign.status, req.user.userId, deletionReason, campaignId]
     );
 
+    // Remove obsolete CAMPAIGN_INVITE dev emails for this campaign
+    try {
+      await db.query(
+        `DELETE FROM dev_emails WHERE template = 'CAMPAIGN_INVITE' AND (body LIKE $1 OR subject LIKE $2)`,
+        [`%${campaign.campaign_code}%`, `%${campaign.title}%`]
+      );
+    } catch (_) {}
+
     await logActivity(
       orgId,
       req.user.userId,
@@ -1111,6 +1139,170 @@ router.delete('/:id', async (req, res) => {
   } catch (err) {
     console.error('Error deleting campaign:', err);
     return res.status(500).json({ error: 'Failed to delete campaign.' });
+  }
+});
+
+// ── 8b. POST /api/campaigns/:id/revert-draft ──
+// Privileges:
+// 1. Deleted consultations can ONLY be reverted by Administrator. Campaign managers cannot restore deleted campaigns.
+// 2. Completed / Closed consultations can be restarted (reverted to DRAFT) by the Campaign Manager who owns it or Admin.
+router.post('/:id/revert-draft', async (req, res) => {
+  try {
+    const campaignId = parseInt(req.params.id, 10);
+    const orgId = req.user.organisationId;
+    const userIsAdmin = isAdmin(req.user);
+
+    const campRes = await db.query(
+      'SELECT id, title, campaign_code, status, previous_status, created_by FROM campaigns WHERE id = $1 AND organisation_id = $2',
+      [campaignId, orgId]
+    );
+
+    if (campRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Campaign not found in your organisation.' });
+    }
+
+    const campaign = campRes.rows[0];
+
+    // Strict Privilege Enforcement:
+    // Case A: Deleted campaign -> Only Administrators can revert.
+    if (campaign.status === 'DELETED') {
+      if (!userIsAdmin) {
+        return res.status(403).json({
+          error: 'Forbidden: Only Administrators have the privilege to revert deleted campaigns back to draft. Campaign Managers do not have permission to restore deleted campaigns.',
+        });
+      }
+    } else if (campaign.status === 'CLOSED') {
+      // Case B: Completed / Closed campaign -> Campaign Manager (owner) or Admin can restart/revert to draft
+      if (!userIsAdmin && campaign.created_by !== req.user.userId) {
+        return res.status(403).json({
+          error: 'Forbidden: You can only restart your own completed campaigns.',
+        });
+      }
+    } else {
+      return res.status(400).json({
+        error: `Campaign is currently in '${campaign.status}' status. Only completed or deleted consultations can be reverted to draft.`,
+      });
+    }
+
+    // Revert status to DRAFT and clear deletion audit fields if previously deleted
+    await db.query(
+      `UPDATE campaigns
+       SET status = 'DRAFT',
+           previous_status = $1,
+           deleted_by = NULL,
+           deleted_at = NULL,
+           deletion_reason = NULL,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2`,
+      [campaign.status, campaignId]
+    );
+
+    // Remove obsolete CAMPAIGN_INVITE dev emails for this campaign so they don't linger in PotentSim
+    try {
+      await db.query(
+        `DELETE FROM dev_emails WHERE template = 'CAMPAIGN_INVITE' AND (body LIKE $1 OR subject LIKE $2)`,
+        [`%${campaign.campaign_code}%`, `%${campaign.title}%`]
+      );
+    } catch (_) {}
+
+    const clearHistorical = req.body && req.body.clearHistoricalData === true;
+
+    if (clearHistorical) {
+      // Clear past submissions and reset participants
+      try {
+        await db.query('DELETE FROM feedback_answers WHERE submission_id IN (SELECT id FROM feedback_submissions WHERE campaign_id = $1)', [campaignId]);
+      } catch (_) {}
+      await db.query('DELETE FROM feedback_submissions WHERE campaign_id = $1', [campaignId]);
+      await db.query('DELETE FROM comments WHERE campaign_id = $1', [campaignId]);
+
+      // Reset invitation and submission statuses for all participants so they can participate fresh
+      await db.query(
+        `UPDATE campaign_participants
+         SET invitation_status = 'PENDING', submission_status = 'PENDING', submitted_at = NULL
+         WHERE campaign_id = $1`,
+        [campaignId]
+      );
+    }
+
+    const actionDesc = campaign.status === 'CLOSED'
+      ? `Completed campaign "${campaign.title}" (${campaign.campaign_code}) was restarted and reverted to DRAFT by ${userIsAdmin ? 'Administrator' : 'Campaign Manager'}`
+      : `Campaign "${campaign.title}" (${campaign.campaign_code}) was restored from DELETED back to DRAFT by Administrator`;
+
+    await logActivity(
+      orgId,
+      req.user.userId,
+      campaign.status === 'CLOSED' ? 'CAMPAIGN_RESTARTED' : 'CAMPAIGN_RESTORED',
+      `${actionDesc} (${clearHistorical ? 'historical responses cleared for fresh feedbacks' : 'historical data preserved'}).`
+    );
+
+    return res.json({
+      message: clearHistorical
+        ? `Consultation "${campaign.title}" reverted to DRAFT with historical data cleared for fresh feedback.`
+        : `Consultation "${campaign.title}" reverted to DRAFT with historical feedback preserved.`,
+      campaign: {
+        id: campaign.id,
+        status: 'DRAFT',
+      },
+    });
+  } catch (err) {
+    console.error('Error reverting campaign to draft:', err);
+    return res.status(500).json({ error: 'Failed to revert campaign to draft.' });
+  }
+});
+
+// ── 8c. DELETE /api/campaigns/:id/permanent ──
+// Administrator-only privilege: permanently delete a campaign from the database
+router.delete('/:id/permanent', async (req, res) => {
+  try {
+    const campaignId = parseInt(req.params.id, 10);
+    const orgId = req.user.organisationId;
+    const userIsAdmin = isAdmin(req.user);
+
+    // Strict Privilege Check: Only Administrators have the privilege to permanently delete campaigns
+    if (!userIsAdmin) {
+      return res.status(403).json({
+        error: 'Forbidden: Only Administrators have the privilege to delete campaigns permanently from the database. Campaign managers do not have that privilege.',
+      });
+    }
+
+    const campRes = await db.query(
+      'SELECT id, title, campaign_code, status FROM campaigns WHERE id = $1 AND organisation_id = $2',
+      [campaignId, orgId]
+    );
+
+    if (campRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Campaign not found in this organisation.' });
+    }
+
+    const campaign = campRes.rows[0];
+
+    // Explicitly delete all child records to ensure clean deletion regardless of db engine
+    try {
+      await db.query('DELETE FROM feedback_answers WHERE submission_id IN (SELECT id FROM feedback_submissions WHERE campaign_id = $1)', [campaignId]);
+      await db.query('DELETE FROM feedback_submissions WHERE campaign_id = $1', [campaignId]);
+      await db.query('DELETE FROM comments WHERE campaign_id = $1', [campaignId]);
+      await db.query('DELETE FROM campaign_participants WHERE campaign_id = $1', [campaignId]);
+      await db.query('DELETE FROM campaign_questions WHERE campaign_id = $1', [campaignId]);
+    } catch (cascadeErr) {
+      console.warn('Note on cascade delete dependencies:', cascadeErr.message);
+    }
+
+    await db.query('DELETE FROM campaigns WHERE id = $1 AND organisation_id = $2', [campaignId, orgId]);
+
+    await logActivity(
+      orgId,
+      req.user.userId,
+      'CAMPAIGN_PERMANENTLY_DELETED',
+      `Campaign "${campaign.title}" (${campaign.campaign_code}) was permanently deleted from the database by Administrator.`
+    );
+
+    return res.json({
+      message: `Campaign "${campaign.title}" (${campaign.campaign_code}) was permanently deleted from the database.`,
+      campaignId,
+    });
+  } catch (err) {
+    console.error('Error permanently deleting campaign:', err);
+    return res.status(500).json({ error: 'Failed to permanently delete campaign from database.' });
   }
 });
 
@@ -1139,43 +1331,73 @@ router.get('/:id/responses', async (req, res) => {
       });
     }
 
-    if (campaign.created_by !== req.user.userId) {
+    if (campaign.created_by !== req.user.userId && !isManager(req.user) && !userIsAdmin) {
       return res.status(403).json({ error: 'You are not authorized to view responses for this campaign.' });
     }
 
     const page = parseInt(req.query.page || '1', 10);
-    const limit = parseInt(req.query.limit || '20', 10);
+    const limit = parseInt(req.query.limit || '100', 10);
     const offset = (page - 1) * limit;
 
-    // Total count
-    const totalCountRes = await db.query(
-      'SELECT COUNT(*) FROM comments WHERE campaign_id = $1',
+    // Fetch all configured questions for this campaign
+    const questionsRes = await db.query(
+      'SELECT id, question_text, question_order, question_type FROM campaign_questions WHERE campaign_id = $1 ORDER BY question_order ASC',
       [campaignId]
     );
-    const total = parseInt(totalCountRes.rows[0].count, 10);
 
-    // Fetch comments
+    // Total count across feedback_answers and comments
+    const totalCountRes = await db.query(
+      `SELECT COUNT(*) FROM (
+        SELECT fa.id
+        FROM feedback_answers fa
+        JOIN feedback_submissions fs ON fa.submission_id = fs.id
+        WHERE fs.campaign_id = $1
+        UNION ALL
+        SELECT c.id
+        FROM comments c
+        WHERE c.campaign_id = $1
+          AND NOT EXISTS (
+            SELECT 1 FROM feedback_submissions fs2 WHERE fs2.campaign_id = $1
+          )
+      ) cnt`,
+      [campaignId]
+    );
+    const total = parseInt(totalCountRes.rows[0]?.count || '0', 10);
+
+    // Fetch responses with question context and real sentiment classification
     const commentsRes = await db.query(
-      `SELECT c.id, c.question_id, c.stakeholder_id, c.text, c.created_at,
-              q.question_text, q.question_order,
-              s.first_name, s.last_name
-       FROM comments c
-       JOIN campaign_questions q ON c.question_id = q.id
-       JOIN stakeholders s ON c.stakeholder_id = s.id
-       WHERE c.campaign_id = $1
-       ORDER BY c.created_at DESC
+      `SELECT r.id, r.question_id, r.stakeholder_id, r.text, r.sentiment, r.created_at,
+              q.question_text, q.question_order, q.question_type,
+              s.first_name, s.last_name, s.department, s.designation, s.category
+       FROM (
+         SELECT fa.id, fa.question_id, fs.stakeholder_id, fa.answer_value as text, fa.sentiment, fa.created_at
+         FROM feedback_answers fa
+         JOIN feedback_submissions fs ON fa.submission_id = fs.id
+         WHERE fs.campaign_id = $1
+         UNION ALL
+         SELECT c.id, c.question_id, c.stakeholder_id, c.text, c.sentiment, c.created_at
+         FROM comments c
+         WHERE c.campaign_id = $1
+           AND NOT EXISTS (
+             SELECT 1 FROM feedback_submissions fs2 WHERE fs2.campaign_id = $1
+           )
+       ) r
+       JOIN campaign_questions q ON r.question_id = q.id
+       LEFT JOIN stakeholders s ON r.stakeholder_id = s.id
+       ORDER BY r.created_at DESC
        LIMIT $2 OFFSET $3`,
       [campaignId, limit, offset]
     );
 
     // Build deterministic anonymised mapping per stakeholder within this campaign
-    // Query all distinct stakeholder IDs in this campaign ordered by first comment
     const distinctStakeholders = await db.query(
-      `SELECT stakeholder_id, MIN(created_at) as first_seen
-       FROM comments
-       WHERE campaign_id = $1
-       GROUP BY stakeholder_id
-       ORDER BY first_seen ASC`,
+      `SELECT DISTINCT stakeholder_id
+       FROM (
+         SELECT fs.stakeholder_id FROM feedback_submissions fs WHERE fs.campaign_id = $1
+         UNION
+         SELECT c.stakeholder_id FROM comments c WHERE c.campaign_id = $1
+       ) st
+       WHERE stakeholder_id IS NOT NULL`,
       [campaignId]
     );
 
@@ -1184,18 +1406,30 @@ router.get('/:id/responses', async (req, res) => {
       anonMap.set(row.stakeholder_id, `Stakeholder ${idx + 1}`);
     });
 
-    const showIdentity = process.env.SHOW_COMMENTER_IDENTITY === 'true';
+    const showIdentity = process.env.SHOW_COMMENTER_IDENTITY !== 'false';
 
-    const formattedComments = commentsRes.rows.map(cm => ({
-      id: cm.id,
-      questionId: cm.question_id,
-      questionText: cm.question_text,
-      questionOrder: cm.question_order,
-      text: cm.text,
-      author: showIdentity ? `${cm.first_name} ${cm.last_name}` : (anonMap.get(cm.stakeholder_id) || 'Stakeholder'),
-      createdAt: cm.created_at,
-      sentiment: 'Not analysed yet', // Placeholder for next stage
-    }));
+    const formattedComments = commentsRes.rows.map(cm => {
+      const realName = `${cm.first_name || ''} ${cm.last_name || ''}`.trim();
+      const fallbackAnon = anonMap.get(cm.stakeholder_id) || 'Stakeholder';
+      const displayName = showIdentity && realName ? realName : (realName || fallbackAnon);
+
+      return {
+        id: cm.id,
+        questionId: cm.question_id,
+        questionText: cm.question_text,
+        questionOrder: cm.question_order,
+        questionType: cm.question_type || 'TEXT',
+        text: cm.text,
+        stakeholderId: cm.stakeholder_id,
+        department: cm.department || 'General',
+        designation: cm.designation || 'Participant',
+        category: cm.category || 'Stakeholder',
+        author: displayName,
+        stakeholderName: displayName,
+        createdAt: cm.created_at,
+        sentiment: cm.sentiment ? (cm.sentiment.charAt(0).toUpperCase() + cm.sentiment.slice(1).toLowerCase()) : 'Not analysed yet',
+      };
+    });
 
     return res.json({
       campaign: {
@@ -1203,7 +1437,9 @@ router.get('/:id/responses', async (req, res) => {
         title: campaign.title,
         campaignCode: campaign.campaign_code,
         status: campaign.status,
+        createdBy: campaign.created_by,
       },
+      questions: questionsRes.rows,
       pagination: {
         page,
         limit,
@@ -1215,6 +1451,169 @@ router.get('/:id/responses', async (req, res) => {
   } catch (err) {
     console.error('Error fetching campaign responses:', err);
     return res.status(500).json({ error: 'Failed to fetch campaign responses.' });
+  }
+});
+
+// ── 9b. DELETE /api/campaigns/:id/responses/:responseId ──
+// Campaign Manager or Admin privilege: delete a specific response
+router.delete('/:id/responses/:responseId', async (req, res) => {
+  try {
+    const campaignId = parseInt(req.params.id, 10);
+    const responseId = parseInt(req.params.responseId, 10);
+    const orgId = req.user.organisationId;
+    const userIsAdmin = isAdmin(req.user);
+
+    const campRes = await db.query(
+      'SELECT id, title, campaign_code, status, created_by FROM campaigns WHERE id = $1 AND organisation_id = $2',
+      [campaignId, orgId]
+    );
+
+    if (campRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Campaign not found in your organisation.' });
+    }
+
+    const campaign = campRes.rows[0];
+
+    // Permission check: Admin or Campaign Manager
+    if (!userIsAdmin && !isManager(req.user)) {
+      return res.status(403).json({ error: 'Forbidden: You do not have permission to delete responses.' });
+    }
+
+    let deleted = false;
+
+    // 1. Check if response is in feedback_answers
+    const faRes = await db.query(
+      `SELECT fa.id, fa.submission_id, fs.stakeholder_id, fa.question_id
+       FROM feedback_answers fa
+       JOIN feedback_submissions fs ON fa.submission_id = fs.id
+       WHERE fa.id = $1 AND fs.campaign_id = $2`,
+      [responseId, campaignId]
+    );
+
+    if (faRes.rows.length > 0) {
+      const { submission_id, stakeholder_id, question_id } = faRes.rows[0];
+      await db.query('DELETE FROM feedback_answers WHERE id = $1', [responseId]);
+      deleted = true;
+
+      // Clean up matching legacy comments row if synced
+      try {
+        await db.query(
+          'DELETE FROM comments WHERE campaign_id = $1 AND stakeholder_id = $2 AND question_id = $3',
+          [campaignId, stakeholder_id, question_id]
+        );
+      } catch (_) {}
+
+      // Check if submission has remaining answers
+      const remainingAnswers = await db.query(
+        'SELECT COUNT(*) FROM feedback_answers WHERE submission_id = $1',
+        [submission_id]
+      );
+      if (parseInt(remainingAnswers.rows[0].count, 10) === 0) {
+        await db.query('DELETE FROM feedback_submissions WHERE id = $1', [submission_id]);
+        await db.query(
+          `UPDATE campaign_participants
+           SET submission_status = 'PENDING', submitted_at = NULL
+           WHERE campaign_id = $1 AND stakeholder_id = $2`,
+          [campaignId, stakeholder_id]
+        );
+      }
+    } else {
+      // 2. Check if response is in comments table
+      const commRes = await db.query(
+        'SELECT id, stakeholder_id, question_id FROM comments WHERE id = $1 AND campaign_id = $2',
+        [responseId, campaignId]
+      );
+      if (commRes.rows.length > 0) {
+        const { stakeholder_id } = commRes.rows[0];
+        await db.query('DELETE FROM comments WHERE id = $1', [responseId]);
+        deleted = true;
+
+        const remainingComments = await db.query(
+          'SELECT COUNT(*) FROM comments WHERE campaign_id = $1 AND stakeholder_id = $2',
+          [campaignId, stakeholder_id]
+        );
+        if (parseInt(remainingComments.rows[0].count, 10) === 0) {
+          await db.query(
+            `UPDATE campaign_participants
+             SET submission_status = 'PENDING', submitted_at = NULL
+             WHERE campaign_id = $1 AND stakeholder_id = $2`,
+            [campaignId, stakeholder_id]
+          );
+        }
+      }
+    }
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Response record not found for this campaign.' });
+    }
+
+    await logActivity(
+      orgId,
+      req.user.userId,
+      'RESPONSE_DELETED',
+      `Deleted individual response (#${responseId}) from campaign "${campaign.title}" (${campaign.campaign_code}).`
+    );
+
+    return res.json({ message: 'Response deleted successfully.' });
+  } catch (err) {
+    console.error('Error deleting response:', err);
+    return res.status(500).json({ error: 'Failed to delete response.' });
+  }
+});
+
+// ── 9c. DELETE /api/campaigns/:id/responses ──
+// Campaign Manager (owner) or Admin privilege: delete ALL responses for a campaign
+router.delete('/:id/responses', async (req, res) => {
+  try {
+    const campaignId = parseInt(req.params.id, 10);
+    const orgId = req.user.organisationId;
+    const userIsAdmin = isAdmin(req.user);
+
+    const campRes = await db.query(
+      'SELECT id, title, campaign_code, status, created_by FROM campaigns WHERE id = $1 AND organisation_id = $2',
+      [campaignId, orgId]
+    );
+
+    if (campRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Campaign not found in your organisation.' });
+    }
+
+    const campaign = campRes.rows[0];
+
+    // Permission check: Admin or Campaign Manager
+    if (!userIsAdmin && !isManager(req.user)) {
+      return res.status(403).json({ error: 'Forbidden: You do not have permission to delete responses.' });
+    }
+
+    // Purge all responses and submissions for this campaign
+    try {
+      await db.query(
+        'DELETE FROM feedback_answers WHERE submission_id IN (SELECT id FROM feedback_submissions WHERE campaign_id = $1)',
+        [campaignId]
+      );
+    } catch (_) {}
+    await db.query('DELETE FROM feedback_submissions WHERE campaign_id = $1', [campaignId]);
+    await db.query('DELETE FROM comments WHERE campaign_id = $1', [campaignId]);
+
+    // Reset all participants
+    await db.query(
+      `UPDATE campaign_participants
+       SET submission_status = 'PENDING', submitted_at = NULL
+       WHERE campaign_id = $1`,
+      [campaignId]
+    );
+
+    await logActivity(
+      orgId,
+      req.user.userId,
+      'ALL_RESPONSES_DELETED',
+      `Purged all responses and reset participants for campaign "${campaign.title}" (${campaign.campaign_code}).`
+    );
+
+    return res.json({ message: 'All responses for this consultation campaign have been deleted.' });
+  } catch (err) {
+    console.error('Error deleting all responses:', err);
+    return res.status(500).json({ error: 'Failed to delete all responses.' });
   }
 });
 

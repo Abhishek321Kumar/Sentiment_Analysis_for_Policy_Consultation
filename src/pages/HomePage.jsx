@@ -133,9 +133,6 @@ export default function HomePage() {
         <div className="hero__glow" />
         <div className="container hero__inner">
           <div className="hero__content animate-fade-in">
-            <div className="hero__eyebrow">
-              <span className="badge badge-decision">Interim Demo Build · Stage 1</span>
-            </div>
             <h1 className="hero__title">
               Turn Sentiment into{' '}
               <span className="hero__title-accent">Smarter Policies.</span>

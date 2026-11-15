@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import {
   Building2, Users, FileText, Plus, LogOut, CheckCircle2,
@@ -6,13 +7,15 @@ import {
   Moon, Sun, Send, X, Search, LayoutDashboard, UserCheck,
   FolderKanban, User, ChevronLeft, ChevronRight, Upload,
   Download, Power, Activity, ArrowRight, Filter, Archive,
-  CheckSquare, Square, RefreshCw, RotateCw, Calendar
+  CheckSquare, Square, RefreshCw, RotateCw, RotateCcw, Calendar,
+  AlertTriangle, Clock, TrendingUp, BarChart3, MessageSquare, Sparkles
 } from 'lucide-react';
 import api from '../services/api';
 import * as XLSX from 'xlsx';
 import LocationFields from '../components/LocationFields';
 import CampaignWizard from '../components/campaign/CampaignWizard';
 import CampaignDetailsModal from '../components/campaign/CampaignDetailsModal';
+import MarkdownEditor from '../components/common/MarkdownEditor';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import './DashboardPage.css';
@@ -496,6 +499,8 @@ export default function DashboardPage() {
     myFeedbackSubmissions: 0,
   });
   const [activities, setActivities] = useState([]);
+  const [managerSentiment, setManagerSentiment] = useState({ positive: 0, neutral: 0, negative: 0 });
+  const [managerRecentFeedback, setManagerRecentFeedback] = useState([]);
   const [campaigns, setCampaigns] = useState([]);
   const [deletedCampaigns, setDeletedCampaigns] = useState([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
@@ -642,11 +647,32 @@ export default function DashboardPage() {
   const [deletingCampaign, setDeletingCampaign] = useState(null);
   const [deletionReason, setDeletionReason] = useState('');
 
+  // Revert Deleted Campaign to Draft Modal (Administrator Only)
+  const [revertingCampaign, setRevertingCampaign] = useState(null);
+  const [showRevertModal, setShowRevertModal] = useState(false);
+  const [revertingLoading, setRevertingLoading] = useState(false);
+
+  // Permanent Delete Campaign Modal (Administrator Only)
+  const [showPermanentDeleteModal, setShowPermanentDeleteModal] = useState(false);
+  const [permanentDeleteCampaign, setPermanentDeleteCampaign] = useState(null);
+  const [permanentDeleteLoading, setPermanentDeleteLoading] = useState(false);
+
   // Responses Modal
   const [showResponsesModal, setShowResponsesModal] = useState(false);
   const [responsesData, setResponsesData] = useState(null);
   const [loadingResponses, setLoadingResponses] = useState(false);
   const [responsesPage, setResponsesPage] = useState(1);
+  const [responsesViewMode, setResponsesViewMode] = useState('by_question'); // 'by_question' | 'by_stakeholder' | 'table'
+  const [responsesFilterQ, setResponsesFilterQ] = useState('all');
+  const [responsesSearchText, setResponsesSearchText] = useState('');
+  const [deletingResponse, setDeletingResponse] = useState(null);
+  const [deletingResponseLoading, setDeletingResponseLoading] = useState(false);
+  const [showDeleteAllResponsesModal, setShowDeleteAllResponsesModal] = useState(false);
+  const [deleteAllResponsesLoading, setDeleteAllResponsesLoading] = useState(false);
+
+  // Unsaved Wizard Navigation Guard
+  const [pendingNav, setPendingNav] = useState(null);
+  const [showNavWarningModal, setShowNavWarningModal] = useState(false);
 
   // Profile Form State
   const [profileForm, setProfileForm] = useState({
@@ -719,6 +745,8 @@ export default function DashboardPage() {
         isAdmin ? api.get('/members/activity') : Promise.resolve({ activities: [] }),
       ]);
       if (statsRes?.stats) setStats(statsRes.stats);
+      if (statsRes?.mySentiment) setManagerSentiment(statsRes.mySentiment);
+      if (statsRes?.recentFeedback) setManagerRecentFeedback(statsRes.recentFeedback);
       if (actRes?.activities) setActivities(actRes.activities);
     } catch (err) {
       console.warn('Failed to fetch dashboard stats:', err.message);
@@ -1546,11 +1574,11 @@ export default function DashboardPage() {
   };
 
   // Open Campaign Details & Stakeholder Participation Status Modal
-  const openCampaignDetails = async campId => {
+  const openCampaignDetails = async (campId, allowDeleted = false) => {
     setLoadingCampaignDetails(true);
     setShowCampaignDetailsModal(true);
     try {
-      const res = await api.get(`/campaigns/${campId}`);
+      const res = await api.get(`/campaigns/${campId}${allowDeleted ? '?allowDeleted=true' : ''}`);
       setCampaignDetails(res);
       setLoadingCampaignDetails(false);
     } catch (err) {
@@ -1777,18 +1805,111 @@ export default function DashboardPage() {
     }
   };
 
+  // Revert Deleted Campaign Back to Draft (Administrator Privilege)
+  const handleConfirmRevertToDraft = async (clearHistoricalData = false) => {
+    if (!revertingCampaign) return;
+    setRevertingLoading(true);
+    try {
+      const res = await api.post(`/campaigns/${revertingCampaign.id}/revert-draft`, { clearHistoricalData });
+      showToast(res.message || 'Campaign successfully reverted back to DRAFT.', 'success');
+      setShowRevertModal(false);
+      setRevertingCampaign(null);
+      refreshAllData();
+      setCampaignSubTab('active');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setRevertingLoading(false);
+    }
+  };
+
+  // Permanent Delete Campaign from Database (Administrator Privilege)
+  const handleConfirmPermanentDelete = async () => {
+    if (!permanentDeleteCampaign) return;
+    setPermanentDeleteLoading(true);
+    try {
+      const res = await api.delete(`/campaigns/${permanentDeleteCampaign.id}/permanent`);
+      showToast(res.message || 'Campaign permanently deleted from database.', 'success');
+      setShowPermanentDeleteModal(false);
+      setPermanentDeleteCampaign(null);
+      refreshAllData();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setPermanentDeleteLoading(false);
+    }
+  };
+
   const openResponsesView = async (campId, page = 1) => {
     setLoadingResponses(true);
     setShowResponsesModal(true);
     setResponsesPage(page);
+    setResponsesViewMode('by_question');
+    setResponsesFilterQ('all');
+    setResponsesSearchText('');
     try {
-      const res = await api.get(`/campaigns/${campId}/responses?page=${page}&limit=10`);
+      const res = await api.get(`/campaigns/${campId}/responses?page=${page}&limit=100`);
       setResponsesData(res);
       setLoadingResponses(false);
     } catch (err) {
       setLoadingResponses(false);
       showToast(err.message, 'error');
     }
+  };
+
+  const handleConfirmDeleteSingleResponse = async () => {
+    if (!deletingResponse || !responsesData?.campaign?.id) return;
+    setDeletingResponseLoading(true);
+    try {
+      await api.delete(`/campaigns/${responsesData.campaign.id}/responses/${deletingResponse.id}`);
+      showToast('Response deleted successfully.', 'success');
+      setDeletingResponse(null);
+      await openResponsesView(responsesData.campaign.id, responsesPage);
+      refreshAllData();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setDeletingResponseLoading(false);
+    }
+  };
+
+  const handleConfirmDeleteAllResponses = async () => {
+    if (!responsesData?.campaign?.id) return;
+    setDeleteAllResponsesLoading(true);
+    try {
+      await api.delete(`/campaigns/${responsesData.campaign.id}/responses`);
+      showToast('All responses for this campaign have been deleted.', 'success');
+      setShowDeleteAllResponsesModal(false);
+      await openResponsesView(responsesData.campaign.id, 1);
+      refreshAllData();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setDeleteAllResponsesLoading(false);
+    }
+  };
+
+  const safeNavigate = (targetView, action = null) => {
+    if (activeView === 'create_campaign') {
+      let hasDraft = false;
+      try {
+        hasDraft = Boolean(localStorage.getItem('potentpolicy_campaign_wizard_draft_v1') || editingCampaign);
+      } catch (e) {
+        hasDraft = Boolean(editingCampaign);
+      }
+      if (hasDraft) {
+        setPendingNav(action ? { action } : { view: targetView });
+        setShowNavWarningModal(true);
+        return;
+      }
+    }
+    if (action === 'logout') {
+      logout();
+      return;
+    }
+    setFilterByManagerId(null);
+    setEditingCampaign(null);
+    setActiveView(targetView);
   };
 
   const handleSaveProfile = async e => {
@@ -1930,10 +2051,7 @@ export default function DashboardPage() {
                 key={item.id}
                 type="button"
                 className={`dash-nav-item ${isActive ? 'active' : ''}`}
-                onClick={() => {
-                  setFilterByManagerId(null);
-                  setActiveView(item.id);
-                }}
+                onClick={() => safeNavigate(item.id)}
                 title={sidebarCollapsed ? item.label : undefined}
               >
                 <IconComp size={18} style={{ flexShrink: 0 }} />
@@ -1954,7 +2072,7 @@ export default function DashboardPage() {
           <button
             type="button"
             className="dash-nav-item dash-nav-item--logout"
-            onClick={logout}
+            onClick={() => safeNavigate(null, 'logout')}
             title="Logout"
           >
             <LogOut size={18} style={{ flexShrink: 0 }} />
@@ -2012,7 +2130,7 @@ export default function DashboardPage() {
 
             <button
               type="button"
-              onClick={() => setActiveView('personal_profile')}
+              onClick={() => safeNavigate('personal_profile')}
               style={{
                 background: 'none',
                 border: 'none',
@@ -2248,235 +2366,386 @@ export default function DashboardPage() {
           )}
 
           {/* ══════════════════════════════════════════════════════════
-              VIEW 1B: CAMPAIGN MANAGER DASHBOARD
+              VIEW 1B: CAMPAIGN MANAGER DASHBOARD (INFORMATIONAL OVERVIEW)
              ══════════════════════════════════════════════════════════ */}
-          {portalMode === 'MANAGER' && activeView === 'dashboard' && (
-            <div className="animate-fade-in">
-              <div className="dash-action-bar">
-                <div>
-                  <h2 className="dash-title">Campaign Manager Workspace</h2>
-                  <p className="dash-subtitle">
-                    Design consultation campaigns, select cohorts from the central stakeholder directory, and monitor feedback.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="dash-btn-primary"
-                  onClick={() => {
-                    setEditingCampaign(null);
-                    setActiveView('create_campaign');
-                  }}
-                >
-                  <Plus size={15} /> Create Consultation Campaign
-                </button>
-              </div>
+          {portalMode === 'MANAGER' && activeView === 'dashboard' && (() => {
+            const activeList = campaigns.filter(c => c.status === 'OPEN');
+            const totalInvited = campaigns.reduce((acc, c) => acc + (Number(c.participant_count) || 0), 0);
+            const totalFeedbackCount = stats.myFeedbackSubmissions || 0;
+            const overallRate = totalInvited > 0 ? Math.min(100, Math.round((totalFeedbackCount / totalInvited) * 100)) : 0;
+            const totalSentiment = (managerSentiment.positive || 0) + (managerSentiment.neutral || 0) + (managerSentiment.negative || 0);
+            const hasSentimentData = totalSentiment > 0;
+            const posPct = hasSentimentData ? Math.round((managerSentiment.positive / totalSentiment) * 100) : 0;
+            const neuPct = hasSentimentData ? Math.round((managerSentiment.neutral / totalSentiment) * 100) : 0;
+            const negPct = hasSentimentData ? Math.max(0, 100 - posPct - neuPct) : 0;
 
-              <div className="dash-stats-grid">
-                <div className="dash-stat-card">
-                  <div className="dash-stat-card__top">
-                    <span className="dash-stat-card__label">My Campaigns</span>
-                    <div className="dash-stat-card__icon">
-                      <FolderKanban size={17} />
-                    </div>
-                  </div>
-                  <div className="dash-stat-card__value">{stats.myTotalCampaigns}</div>
-                  <div className="dash-stat-card__meta">{stats.myDraftCampaigns} draft(s) in preparation</div>
-                </div>
-
-                <div className="dash-stat-card">
-                  <div className="dash-stat-card__top">
-                    <span className="dash-stat-card__label">Active Consultations</span>
-                    <div className="dash-stat-card__icon">
-                      <Activity size={17} />
-                    </div>
-                  </div>
-                  <div className="dash-stat-card__value">{stats.myActiveCampaigns}</div>
-                  <div className="dash-stat-card__meta">Open for stakeholder submissions</div>
-                </div>
-
-                <div className="dash-stat-card">
-                  <div className="dash-stat-card__top">
-                    <span className="dash-stat-card__label">Completed Campaigns</span>
-                    <div className="dash-stat-card__icon">
-                      <CheckCircle2 size={17} />
-                    </div>
-                  </div>
-                  <div className="dash-stat-card__value">{stats.myCompletedCampaigns}</div>
-                  <div className="dash-stat-card__meta">Closed consultations</div>
-                </div>
-
-                <div className="dash-stat-card">
-                  <div className="dash-stat-card__top">
-                    <span className="dash-stat-card__label">Feedback Received</span>
-                    <div className="dash-stat-card__icon">
-                      <FileText size={17} />
-                    </div>
-                  </div>
-                  <div className="dash-stat-card__value">{stats.myFeedbackSubmissions}</div>
-                  <div className="dash-stat-card__meta">Across your managed campaigns</div>
-                </div>
-
-                <div className="dash-stat-card">
-                  <div className="dash-stat-card__top">
-                    <span className="dash-stat-card__label">Eligible Directory Pool</span>
-                    <div className="dash-stat-card__icon">
-                      <Users size={17} />
-                    </div>
-                  </div>
-                  <div className="dash-stat-card__value">{stats.activeStakeholders}</div>
-                  <div className="dash-stat-card__meta">Active stakeholders maintained by Admin</div>
-                </div>
-              </div>
-
-              {localDraftInfo && (
-                <div
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(194, 65, 12, 0.08) 0%, rgba(35, 39, 42, 0.04) 100%)',
-                    border: '1px solid rgba(194, 65, 12, 0.28)',
-                    borderRadius: '10px',
-                    padding: '1rem 1.25rem',
-                    marginBottom: '1.25rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: '0.85rem',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                    <div
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '8px',
-                        background: 'rgba(194, 65, 12, 0.15)',
-                        color: 'var(--brand-accent)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <FileText size={18} />
+            return (
+              <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                {/* ── Top Header Banner (Informational Only - No Action Buttons) ── */}
+                <div className="cm-hero-banner" style={{ margin: 0 }}>
+                  <div className="cm-hero-left">
+                    <div className="cm-hero-avatar">
+                      {user?.firstName?.[0] || 'M'}
                     </div>
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' }}>
-                          In-Progress Draft: &ldquo;{localDraftInfo.title}&rdquo;
+                      <h2 className="cm-hero-meta-title">
+                        Welcome back, {user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Campaign Manager'} 👋
+                      </h2>
+                      <div className="cm-hero-tags">
+                        <span className="cm-badge-accent">
+                          <ShieldCheck size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: '-1px' }} />
+                          {user?.designation || 'Campaign Manager'}
                         </span>
-                        <span className="status-pill status-pill--draft" style={{ fontSize: '0.7rem', padding: '0.15rem 0.45rem' }}>
-                          Auto-saved locally ({localDraftInfo.savedAt})
+                        <span className="cm-badge-subtle">
+                          <Building2 size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: '-1px' }} />
+                          {user?.department || 'Policy Operations'}
+                        </span>
+                        <span className="cm-badge-subtle" style={{ color: 'var(--sentiment-positive)', fontWeight: 600 }}>
+                          <span className="cm-pulse-dot" style={{ marginRight: '5px' }} />
+                          Consultation Ops Online
+                        </span>
+                        <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                          &bull; {new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
                         </span>
                       </div>
-                      <p style={{ margin: '0.2rem 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                        {localDraftInfo.questionCount} question(s) &bull; {localDraftInfo.stakeholderCount} stakeholder(s) selected &bull; Resume right where you left off.
-                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Top Executive KPI Cards (4 High-Impact Metrics) ── */}
+                <div className="cm-kpi-grid" style={{ margin: 0 }}>
+                  <div className="cm-kpi-card" style={{ borderTop: '3px solid var(--sentiment-positive)' }}>
+                    <div className="cm-kpi-card__top">
+                      <span className="cm-kpi-card__label">Active Consultations</span>
+                      <div className="cm-kpi-card__icon" style={{ background: 'var(--sentiment-positive-bg)', color: 'var(--sentiment-positive)' }}>
+                        <Activity size={18} />
+                      </div>
+                    </div>
+                    <div className="cm-kpi-card__value">{stats.myActiveCampaigns}</div>
+                    <div className="cm-kpi-card__meta">
+                      <span className="cm-pulse-dot" />
+                      <span>{stats.myActiveCampaigns === 1 ? '1 consultation currently open' : `${stats.myActiveCampaigns} consultations currently live`}</span>
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <button
-                      type="button"
-                      className="dash-btn-secondary dash-btn-sm"
-                      onClick={() => {
-                        try {
-                          localStorage.removeItem('potentpolicy_wizard_draft_new');
-                        } catch (e) {}
-                        setLocalDraftInfo(null);
-                        showToast('In-progress draft discarded.');
-                      }}
-                    >
-                      <Trash2 size={13} /> Discard Draft
-                    </button>
-                    <button
-                      type="button"
-                      className="dash-btn-primary dash-btn-sm"
-                      onClick={() => {
-                        setEditingCampaign(null);
-                        setActiveView('create_campaign');
-                      }}
-                    >
-                      Resume Consultation &rarr;
-                    </button>
+                  <div className="cm-kpi-card" style={{ borderTop: '3px solid var(--brand-accent)' }}>
+                    <div className="cm-kpi-card__top">
+                      <span className="cm-kpi-card__label">Stakeholder Engagement</span>
+                      <div className="cm-kpi-card__icon" style={{ background: 'rgba(194, 65, 12, 0.12)', color: 'var(--brand-accent)' }}>
+                        <TrendingUp size={18} />
+                      </div>
+                    </div>
+                    <div className="cm-kpi-card__value">
+                      {overallRate}%
+                    </div>
+                    <div>
+                      <div className="cm-progress-track" style={{ height: '5px', marginBottom: '0.35rem' }}>
+                        <div
+                          className="cm-progress-fill"
+                          style={{
+                            width: `${overallRate}%`,
+                            background: overallRate >= 65 ? 'var(--sentiment-positive)' : 'var(--brand-accent)',
+                          }}
+                        />
+                      </div>
+                      <div className="cm-kpi-card__meta">
+                        <span>{totalFeedbackCount} responses from {totalInvited} invited</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="cm-kpi-card" style={{ borderTop: '3px solid #6366f1' }}>
+                    <div className="cm-kpi-card__top">
+                      <span className="cm-kpi-card__label">Feedback Received</span>
+                      <div className="cm-kpi-card__icon" style={{ background: 'rgba(99, 102, 241, 0.12)', color: '#6366f1' }}>
+                        <MessageSquare size={18} />
+                      </div>
+                    </div>
+                    <div className="cm-kpi-card__value">{stats.myFeedbackSubmissions}</div>
+                    <div className="cm-kpi-card__meta">
+                      <span>Across {stats.myTotalCampaigns} managed consultations</span>
+                    </div>
+                  </div>
+
+                  <div className="cm-kpi-card" style={{ borderTop: '3px solid #0ea5e9' }}>
+                    <div className="cm-kpi-card__top">
+                      <span className="cm-kpi-card__label">Audience Reach</span>
+                      <div className="cm-kpi-card__icon" style={{ background: 'rgba(14, 165, 233, 0.12)', color: '#0ea5e9' }}>
+                        <Users size={18} />
+                      </div>
+                    </div>
+                    <div className="cm-kpi-card__value">{stats.activeStakeholders}</div>
+                    <div className="cm-kpi-card__meta">
+                      <span>Verified stakeholders in central directory</span>
+                    </div>
                   </div>
                 </div>
-              )}
 
-              <div className="dash-panel">
-                <div className="dash-panel__title">
-                  <span>Recent Consultation Campaigns</span>
-                  <button
-                    type="button"
-                    className="dash-btn-secondary dash-btn-sm"
-                    onClick={() => setActiveView('my_campaigns')}
-                  >
-                    View All My Campaigns
-                  </button>
-                </div>
-
-                {campaigns.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
-                    No campaigns created yet. Click &ldquo;Create Consultation Campaign&rdquo; to launch your first consultation.
+                {/* ── Section 1: Active Consultations Overview (Full Width) ── */}
+                <div className="dash-panel" style={{ padding: '1.4rem' }}>
+                  <div className="dash-panel__title" style={{ marginBottom: '1.15rem' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.05rem' }}>
+                      <Activity size={18} style={{ color: 'var(--brand-accent)' }} />
+                      Active Consultations Overview
+                      <span className="dash-badge" style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', background: 'var(--bg-secondary)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                        {activeList.length} Active
+                      </span>
+                    </span>
                   </div>
-                ) : (
-                  <div className="dash-table-wrap">
-                    <table className="dash-table">
-                      <thead>
-                        <tr>
-                          <th>Campaign Title &amp; Code</th>
-                          <th>Status</th>
-                          <th>Participants</th>
-                          <th>Submissions</th>
-                          <th>Timeline</th>
-                          <th style={{ textAlign: 'right' }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {campaigns.slice(0, 5).map(c => (
-                          <tr key={c.id}>
-                            <td>
-                              <div style={{ fontWeight: '700' }}>{c.title}</div>
-                              <div style={{ fontSize: '0.76rem', fontFamily: 'monospace', color: 'var(--brand-accent)' }}>
-                                Code: {c.campaign_code}
+
+                  {activeList.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '2.5rem 1.5rem', color: 'var(--text-muted)' }}>
+                      <div
+                        style={{
+                          width: '50px',
+                          height: '50px',
+                          borderRadius: '50%',
+                          background: 'var(--bg-secondary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          margin: '0 auto 0.75rem',
+                          color: 'var(--text-muted)',
+                        }}
+                      >
+                        <FolderKanban size={24} />
+                      </div>
+                      <div style={{ fontWeight: 700, fontSize: '0.96rem', color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
+                        No Active Consultations Right Now
+                      </div>
+                      <p style={{ fontSize: '0.82rem', maxWidth: '360px', margin: '0 auto', lineHeight: 1.5 }}>
+                        There are currently no open consultations in the field. Active campaigns will display real-time submission progress here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.95rem' }}>
+                      {activeList.map(c => {
+                        const pCount = Number(c.participant_count) || 0;
+                        const rCount = Number(c.response_count) || 0;
+                        const participatedCount = Number(c.participated_count) || (rCount > 0 ? Math.min(pCount, rCount) : 0);
+                        const percent = pCount > 0 ? Math.min(100, Math.round((participatedCount / pCount) * 100)) : 0;
+                        const closeDate = new Date(c.closing_date);
+                        const now = new Date();
+                        const daysLeft = Math.ceil((closeDate - now) / (1000 * 60 * 60 * 24));
+                        const isEndingSoon = daysLeft <= 3 && daysLeft >= 0;
+
+                        return (
+                          <div key={c.id} className="cm-live-card">
+                            <div className="cm-live-card__header">
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div className="cm-live-card__title">{c.title}</div>
+                                <div className="cm-live-card__code">Campaign Code: {c.campaign_code}</div>
                               </div>
-                            </td>
-                            <td>
-                              <span className={`status-pill status-pill--${c.status.toLowerCase()}`}>
-                                {c.status}
+                              <div>
+                                {isEndingSoon ? (
+                                  <span
+                                    className="status-pill"
+                                    style={{
+                                      fontSize: '0.72rem',
+                                      background: 'rgba(239, 68, 68, 0.12)',
+                                      color: '#ef4444',
+                                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem',
+                                    }}
+                                  >
+                                    <Clock size={11} />
+                                    {daysLeft === 0 ? 'Closes today' : `${daysLeft} day${daysLeft > 1 ? 's' : ''} left`}
+                                  </span>
+                                ) : (
+                                  <span className="status-pill status-pill--open" style={{ fontSize: '0.72rem' }}>
+                                    {daysLeft > 0 ? `${daysLeft} days left` : 'Open'}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Informational metadata strip */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', fontSize: '0.78rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                <Calendar size={13} style={{ color: 'var(--text-muted)' }} />
+                                Consultation Window: <strong>{new Date(c.opening_date).toLocaleDateString()} &ndash; {new Date(c.closing_date).toLocaleDateString()}</strong>
                               </span>
-                            </td>
-                            <td>{c.participant_count} stakeholders</td>
-                            <td>{c.response_count} responses</td>
-                            <td style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                              {new Date(c.opening_date).toLocaleDateString()} – {new Date(c.closing_date).toLocaleDateString()}
-                            </td>
-                            <td style={{ textAlign: 'right' }}>
-                              <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
-                                <button
-                                  type="button"
-                                  className="dash-btn-secondary dash-btn-sm"
-                                  onClick={() => openCampaignDetails(c.id)}
-                                >
-                                  <Users size={13} /> Stakeholders
-                                </button>
-                                <button
-                                  type="button"
-                                  className="dash-btn-secondary dash-btn-sm"
-                                  onClick={() => openResponsesView(c.id)}
-                                >
-                                  <Eye size={13} /> Responses
-                                </button>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                <Users size={13} style={{ color: 'var(--text-muted)' }} />
+                                Assigned Cohort: <strong>{pCount} Stakeholders</strong>
+                              </span>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                <MessageSquare size={13} style={{ color: rCount > 0 ? 'var(--brand-accent)' : 'var(--text-muted)' }} />
+                                Feedback Answers:
+                                {rCount > 0 ? (
+                                  <button
+                                    type="button"
+                                    className="dash-btn-secondary dash-btn-sm"
+                                    style={{
+                                      padding: '0.15rem 0.5rem',
+                                      fontSize: '0.74rem',
+                                      fontWeight: 700,
+                                      color: 'var(--brand-accent)',
+                                      borderColor: 'rgba(194, 65, 12, 0.35)',
+                                      marginLeft: '0.25rem',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem',
+                                    }}
+                                    onClick={() => openResponsesView(c.id)}
+                                    title="Inspect submitted stakeholder feedback & sentiment classifications"
+                                  >
+                                    <Eye size={12} /> {rCount} Recorded &bull; View Responses &rarr;
+                                  </button>
+                                ) : (
+                                  <strong>0 Recorded</strong>
+                                )}
+                              </span>
+                            </div>
+
+                            {/* Informational Progress Bar */}
+                            <div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: '0.35rem' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>
+                                  Stakeholder Participation Rate:{' '}
+                                  <strong style={{ color: 'var(--text-primary)' }}>
+                                    {participatedCount} of {pCount} stakeholders ({percent}% participated)
+                                  </strong>
+                                </span>
+                                <span style={{ fontWeight: 800, color: percent >= 75 ? 'var(--sentiment-positive)' : 'var(--brand-accent)' }}>
+                                  {percent}% completed
+                                </span>
                               </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                              <div className="cm-progress-track">
+                                <div
+                                  className="cm-progress-fill"
+                                  style={{
+                                    width: `${percent}%`,
+                                    background: percent >= 75 ? 'var(--sentiment-positive)' : 'linear-gradient(90deg, #f97316 0%, var(--brand-accent) 100%)',
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Section 2: Feedback & Sentiment Intelligence (Balanced 2-Column Grid) ── */}
+                <div className="cm-two-col-grid">
+                  {/* Left Column: Stakeholder Sentiment Pulse */}
+                  <div className="dash-panel" style={{ padding: '1.35rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    <div>
+                      <div className="dash-panel__title" style={{ marginBottom: '0.5rem' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '1rem' }}>
+                          <BarChart3 size={17} style={{ color: 'var(--brand-accent)' }} />
+                          Stakeholder Sentiment Pulse
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.45 }}>
+                        Automated NLP sentiment analysis across {totalSentiment} stakeholder question response{totalSentiment !== 1 ? 's' : ''}.
+                      </p>
+
+                      {hasSentimentData ? (
+                        <div className="cm-sentiment-box">
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', fontWeight: 600 }}>
+                            <span style={{ color: 'var(--sentiment-positive)' }}>Supportive ({posPct}%)</span>
+                            <span style={{ color: 'var(--text-secondary)' }}>Neutral ({neuPct}%)</span>
+                            <span style={{ color: 'var(--brand-accent)' }}>Critical / Concerns ({negPct}%)</span>
+                          </div>
+
+                          {/* Tri-color gauge */}
+                          <div className="cm-sentiment-multibar">
+                            <div style={{ width: `${posPct}%`, background: 'var(--sentiment-positive)' }} title={`Positive: ${posPct}%`} />
+                            <div style={{ width: `${neuPct}%`, background: '#94a3b8' }} title={`Neutral: ${neuPct}%`} />
+                            <div style={{ width: `${negPct}%`, background: 'var(--brand-accent)' }} title={`Critical / Concerns: ${negPct}%`} />
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            <span className="cm-badge-subtle" style={{ color: 'var(--sentiment-positive)', fontSize: '0.72rem' }}>
+                              ● {managerSentiment.positive || 0} Supportive Answers
+                            </span>
+                            <span className="cm-badge-subtle" style={{ color: 'var(--text-secondary)', fontSize: '0.72rem' }}>
+                              ● {managerSentiment.neutral || 0} Neutral
+                            </span>
+                            <span className="cm-badge-subtle" style={{ color: 'var(--brand-accent)', fontSize: '0.72rem' }}>
+                              ● {managerSentiment.negative || 0} Concerns
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                          <BarChart3 size={30} style={{ opacity: 0.35, margin: '0 auto 0.5rem' }} />
+                          <div style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
+                            No Sentiment Feedback Recorded Yet
+                          </div>
+                          <p style={{ fontSize: '0.78rem', maxWidth: '320px', margin: '0 auto', lineHeight: 1.45 }}>
+                            As stakeholders submit qualitative feedback in open consultations, the NLP model automatically analyzes comment tone and graphs the sentiment breakdown here.
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
+
+                  {/* Right Column: Recent Feedback Stream */}
+                  <div className="dash-panel" style={{ padding: '1.35rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    <div>
+                      <div className="dash-panel__title" style={{ marginBottom: '0.5rem' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '1rem' }}>
+                          <MessageSquare size={17} style={{ color: '#6366f1' }} />
+                          Recent Feedback Stream
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.45 }}>
+                        Live stream of recent qualitative comments submitted by participating stakeholders.
+                      </p>
+
+                      {managerRecentFeedback.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                          <MessageSquare size={30} style={{ opacity: 0.35, margin: '0 auto 0.5rem' }} />
+                          <div style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
+                            No Feedback Submissions Yet
+                          </div>
+                          <p style={{ fontSize: '0.78rem', maxWidth: '320px', margin: '0 auto', lineHeight: 1.45 }}>
+                            Real-time responses and qualitative comments will populate here as stakeholders complete consultation forms.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="cm-feedback-stream-scroll">
+                          {managerRecentFeedback.map((fb, idx) => (
+                            <div key={fb.id || idx} className="cm-feedback-tile" style={{ margin: 0 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                                <span style={{ fontSize: '0.7rem', fontFamily: 'monospace', color: 'var(--brand-accent)', fontWeight: 600 }}>
+                                  {fb.campaign_code || 'CONSULTATION'}
+                                </span>
+                                <span
+                                  className={`status-pill ${
+                                    (fb.sentiment || '').toLowerCase().includes('pos')
+                                      ? 'status-pill--active'
+                                      : (fb.sentiment || '').toLowerCase().includes('neg')
+                                      ? 'status-pill--inactive'
+                                      : 'status-pill--draft'
+                                  }`}
+                                  style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem' }}
+                                >
+                                  {fb.sentiment || 'Feedback'}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontStyle: 'italic', lineHeight: 1.4 }}>
+                                &ldquo;{fb.text?.length > 95 ? `${fb.text.slice(0, 95)}…` : fb.text}&rdquo;
+                              </div>
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
+                                {fb.created_at ? new Date(fb.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'} &bull; {fb.campaign_title || ''}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* ══════════════════════════════════════════════════════════
               VIEW 2: CAMPAIGN MANAGER MANAGEMENT (ADMIN ONLY)
@@ -2901,6 +3170,15 @@ export default function DashboardPage() {
                             >
                               {s.status === 'not_registered' ? 'Not Registered' : s.status}
                             </span>
+                            {s.hasParticipated ? (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--brand-accent)', marginTop: '0.25rem', fontWeight: 600 }} title="Stakeholder has consultation participation records">
+                                {s.campaign_count || 1} consultation(s)
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                                0 consultations
+                              </div>
+                            )}
                           </td>
                           <td style={{ textAlign: 'right' }}>
                             <div style={{ display: 'inline-flex', gap: '0.4rem', alignItems: 'center', justifyContent: 'flex-end' }}>
@@ -2949,13 +3227,28 @@ export default function DashboardPage() {
                                 </button>
                               )}
 
-                              {(s.status === 'not_registered' || !s.hasParticipated) && (
+                              {(s.status === 'not_registered' || !s.hasParticipated) ? (
                                 <button
                                   type="button"
                                   className="dash-btn-secondary dash-btn-sm"
                                   style={{ color: '#ef4444' }}
                                   onClick={() => handleDeleteStakeholder(s)}
-                                  title="Delete stakeholder from directory"
+                                  title="Delete stakeholder from directory (permanently removes unparticipated record)"
+                                >
+                                  <Trash2 size={13} /> Delete
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="dash-btn-secondary dash-btn-sm"
+                                  disabled
+                                  style={{
+                                    opacity: 0.45,
+                                    cursor: 'not-allowed',
+                                    color: 'var(--text-muted)',
+                                    borderColor: 'var(--border-color)',
+                                  }}
+                                  title="Cannot delete: Stakeholder has participated in consultations. Deactivate instead to preserve governance audit trail."
                                 >
                                   <Trash2 size={13} /> Delete
                                 </button>
@@ -3224,13 +3517,18 @@ export default function DashboardPage() {
                         <th>Deleted By</th>
                         <th>Deletion Date</th>
                         <th>Reason for Deletion</th>
+                        {isAdmin && <th style={{ textAlign: 'right' }}>Actions</th>}
                       </tr>
                     </thead>
                     <tbody>
                       {displayedCampaigns.map(dc => (
                         <tr key={dc.id}>
-                          <td>
-                            <div style={{ fontWeight: '700' }}>{dc.title}</div>
+                          <td
+                            style={{ cursor: 'pointer' }}
+                            onClick={() => openCampaignDetails(dc.id, true)}
+                            title="Click to view campaign details and questions"
+                          >
+                            <div style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{dc.title}</div>
                             <div style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: 'var(--text-muted)' }}>
                               Code: {dc.campaign_code}
                             </div>
@@ -3252,6 +3550,50 @@ export default function DashboardPage() {
                           <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
                             {dc.deletion_reason || 'Administrative removal'}
                           </td>
+                          {isAdmin && (
+                            <td style={{ textAlign: 'right' }}>
+                              <div style={{ display: 'inline-flex', gap: '0.45rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                                <button
+                                  type="button"
+                                  className="dash-btn-secondary dash-btn-sm"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem',
+                                    color: 'var(--brand-accent)',
+                                    borderColor: 'rgba(194, 65, 12, 0.35)',
+                                    fontWeight: 600,
+                                  }}
+                                  onClick={() => {
+                                    setRevertingCampaign(dc);
+                                    setShowRevertModal(true);
+                                  }}
+                                  title="Administrator Privilege: Revert deleted campaign back to Draft"
+                                >
+                                  <RotateCcw size={13} /> Revert to Draft
+                                </button>
+                                <button
+                                  type="button"
+                                  className="dash-btn-secondary dash-btn-sm"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem',
+                                    color: '#ef4444',
+                                    borderColor: 'rgba(239, 68, 68, 0.35)',
+                                    fontWeight: 600,
+                                  }}
+                                  onClick={() => {
+                                    setPermanentDeleteCampaign(dc);
+                                    setShowPermanentDeleteModal(true);
+                                  }}
+                                  title="Administrator Privilege: Delete campaign permanently from the database"
+                                >
+                                  <Trash2 size={13} /> Delete Permanently
+                                </button>
+                              </div>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -3400,6 +3742,33 @@ export default function DashboardPage() {
                                       Complete
                                     </button>
                                   </>
+                                )}
+
+                                {c.status === 'CLOSED' && (isAdmin || (isManager && isOwner)) && (
+                                  <button
+                                    type="button"
+                                    className="dash-btn-primary dash-btn-sm"
+                                    onClick={() => {
+                                      setRevertingCampaign(c);
+                                      setShowRevertModal(true);
+                                    }}
+                                    title="Restart completed consultation by reverting to Draft"
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                                  >
+                                    <RotateCcw size={13} /> Restart / Revert
+                                  </button>
+                                )}
+
+                                {isManager && Number(c.response_count) > 0 && (
+                                  <button
+                                    type="button"
+                                    className="dash-btn-secondary dash-btn-sm"
+                                    onClick={() => openResponsesView(c.id)}
+                                    title="View submitted stakeholder feedback responses & sentiment analysis"
+                                    style={{ color: 'var(--brand-accent)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                                  >
+                                    <Eye size={13} /> Responses ({c.response_count})
+                                  </button>
                                 )}
 
                                 {(isAdmin || (isManager && isOwner)) && (
@@ -5081,6 +5450,18 @@ export default function DashboardPage() {
           openDeleteCampaignModal(c);
         }}
         onResendInvitations={handleResendInvitations}
+        isAdmin={isAdmin}
+        onViewResponses={openResponsesView}
+        onRevertToDraft={c => {
+          setShowCampaignDetailsModal(false);
+          setRevertingCampaign(c);
+          setShowRevertModal(true);
+        }}
+        onPermanentDelete={c => {
+          setShowCampaignDetailsModal(false);
+          setPermanentDeleteCampaign(c);
+          setShowPermanentDeleteModal(true);
+        }}
       />
 
       {/* ══════════════════════════════════════════════════════════════
@@ -5299,22 +5680,13 @@ export default function DashboardPage() {
                       onChange={e => setCampaignForm(p => ({ ...p, title: e.target.value }))}
                     />
                   </div>
-                  <div style={{ marginBottom: '0.9rem' }}>
-                    <label className="dash-label">Description</label>
-                    <textarea
-                      className="dash-textarea"
-                      style={{
-                        width: '100%',
-                        maxWidth: '100%',
-                        height: '120px',
-                        minHeight: '120px',
-                        maxHeight: '120px',
-                        resize: 'none',
-                        overflowY: 'auto',
-                        boxSizing: 'border-box',
-                      }}
+                  <div style={{ marginBottom: '1rem' }}>
+                    <MarkdownEditor
+                      label="Description"
                       value={campaignForm.description}
-                      onChange={e => setCampaignForm(p => ({ ...p, description: e.target.value }))}
+                      onChange={val => setCampaignForm(p => ({ ...p, description: val }))}
+                      minHeight="140px"
+                      maxHeight="260px"
                     />
                   </div>
                   <div className="dash-form-grid" style={{ marginBottom: '1rem' }}>
@@ -5411,104 +5783,619 @@ export default function DashboardPage() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════
-          MODAL 9: CAMPAIGN RESPONSES & SENTIMENT VIEW
+          MODAL 8b: REVERT CAMPAIGN TO DRAFT / RESTART CONSULTATION
          ══════════════════════════════════════════════════════════════ */}
-      {showResponsesModal && (
-        <div className="dash-modal-backdrop">
-          <div className="dash-modal dash-modal--wide animate-fade-in">
-            <div className="dash-modal-header">
+      {showRevertModal && revertingCampaign && createPortal(
+        <div className="dash-modal-backdrop" style={{ zIndex: 100000 }}>
+          <div className="dash-modal animate-fade-in" style={{ maxWidth: '540px' }}>
+            <div className="dash-modal-header" style={{ marginBottom: '1rem', paddingBottom: '0.65rem' }}>
               <div>
-                <h3 className="dash-modal-title">
-                  {responsesData?.campaign?.title || 'Submitted Stakeholder Feedback'}
+                <h3 className="dash-modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
+                  <RotateCcw size={18} style={{ color: 'var(--brand-accent)' }} />
+                  {revertingCampaign.status === 'CLOSED' ? 'Restart Consultation (Revert to Draft)' : 'Revert Consultation to Draft'}
                 </h3>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  Campaign Code: {responsesData?.campaign?.campaignCode} · Status:{' '}
-                  {responsesData?.campaign?.status}
+                  Campaign: <strong>{revertingCampaign.title}</strong> ({revertingCampaign.campaign_code})
                 </span>
               </div>
               <button
                 type="button"
-                onClick={() => setShowResponsesModal(false)}
+                onClick={() => {
+                  setShowRevertModal(false);
+                  setRevertingCampaign(null);
+                }}
                 style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
               >
                 <X size={20} />
               </button>
             </div>
 
-            {loadingResponses ? (
-              <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                Loading responses...
-              </div>
-            ) : !responsesData || responsesData.responses.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                No feedback responses recorded for this campaign yet.
-              </div>
-            ) : (
-              <div>
-                <div style={{ marginBottom: '1rem', fontSize: '0.84rem', color: 'var(--text-secondary)' }}>
-                  Showing {responsesData.responses.length} of {responsesData.pagination.total} submissions. Stakeholder identities are anonymised to protect deliberation candour.
-                </div>
+            <div>
+              <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: '1.5', margin: '0 0 1rem' }}>
+                {revertingCampaign.status === 'CLOSED' ? (
+                  <>You are restarting this completed consultation by reverting it back to <strong>DRAFT</strong> status so you can adjust dates, modify questions, or collect more stakeholder participation. How would you like to handle historical feedback data?</>
+                ) : (
+                  <>As an Administrator, you are reverting this consultation back to <strong>DRAFT</strong> status. How would you like to handle historical feedback data?</>
+                )}
+              </p>
 
-                <div className="dash-table-wrap">
-                  <table className="dash-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: '25%' }}>Question</th>
-                        <th>Stakeholder Comment</th>
-                        <th style={{ width: '15%' }}>Participant</th>
-                        <th style={{ width: '18%' }}>Sentiment Classification</th>
-                        <th style={{ width: '14%' }}>Submitted</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {responsesData.responses.map(resp => (
-                        <tr key={resp.id}>
-                          <td style={{ fontWeight: '600', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                            Q{resp.questionOrder}: {resp.questionText}
-                          </td>
-                          <td style={{ lineHeight: '1.5' }}>{resp.text}</td>
-                          <td style={{ fontWeight: '700', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                            {resp.author}
-                          </td>
-                          <td>
-                            <span className="category-badge">{resp.sentiment || 'Not analysed yet'}</span>
-                          </td>
-                          <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                            {new Date(resp.createdAt).toLocaleDateString()}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {responsesData.pagination.totalPages > 1 && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1rem' }}>
-                    <button
-                      type="button"
-                      className="dash-btn-secondary dash-btn-sm"
-                      disabled={responsesPage <= 1}
-                      onClick={() => openResponsesView(responsesData.campaign.id, responsesPage - 1)}
-                    >
-                      Previous
-                    </button>
-                    <span style={{ display: 'flex', alignItems: 'center', padding: '0 0.5rem', fontSize: '0.84rem' }}>
-                      Page {responsesPage} of {responsesData.pagination.totalPages}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                {/* Option 1: New Fresh Feedbacks */}
+                <div
+                  style={{
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '9px',
+                    padding: '0.95rem 1.1rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.45rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                      <Sparkles size={16} style={{ color: 'var(--brand-accent)' }} />
+                      <span>Use for New Fresh Feedbacks</span>
+                    </div>
+                    <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.45rem', borderRadius: '4px', background: 'rgba(234, 88, 12, 0.1)', color: 'var(--brand-accent)', fontWeight: 600 }}>
+                      Clean Slate
                     </span>
+                  </div>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.45' }}>
+                    Deletes historical responses and comments for this consultation. Assigned participants are reset to PENDING so fresh responses can be submitted, and questions can be freely modified.
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.35rem' }}>
                     <button
                       type="button"
-                      className="dash-btn-secondary dash-btn-sm"
-                      disabled={responsesPage >= responsesData.pagination.totalPages}
-                      onClick={() => openResponsesView(responsesData.campaign.id, responsesPage + 1)}
+                      className="dash-btn-primary dash-btn-sm"
+                      disabled={revertingLoading}
+                      onClick={() => handleConfirmRevertToDraft(true)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
                     >
-                      Next
+                      <Sparkles size={13} />
+                      {revertingLoading ? 'Reverting...' : 'Revert & Clear Historical Data'}
                     </button>
                   </div>
-                )}
+                </div>
+
+                {/* Option 2: Keep Historical Data */}
+                <div
+                  style={{
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '9px',
+                    padding: '0.95rem 1.1rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.45rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                      <Archive size={16} style={{ color: '#2563eb' }} />
+                      <span>Keep Historical Data</span>
+                    </div>
+                    <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.45rem', borderRadius: '4px', background: 'rgba(37, 99, 235, 0.1)', color: '#2563eb', fontWeight: 600 }}>
+                      Preserve Records
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.45' }}>
+                    Retains all previously submitted stakeholder answers and participant statuses in the database.
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.35rem' }}>
+                    <button
+                      type="button"
+                      className="dash-btn-secondary dash-btn-sm"
+                      disabled={revertingLoading}
+                      onClick={() => handleConfirmRevertToDraft(false)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                    >
+                      <Archive size={13} />
+                      {revertingLoading ? 'Reverting...' : 'Revert & Keep Historical Data'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem' }}>
+                <button
+                  type="button"
+                  className="dash-btn-secondary"
+                  disabled={revertingLoading}
+                  onClick={() => {
+                    setShowRevertModal(false);
+                    setRevertingCampaign(null);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════
+          MODAL 8c: PERMANENTLY DELETE CAMPAIGN FROM DB (ADMINISTRATOR ONLY)
+         ══════════════════════════════════════════════════════════════ */}
+      {showPermanentDeleteModal && permanentDeleteCampaign && (
+        <div className="dash-modal-backdrop">
+          <div className="dash-modal animate-fade-in" style={{ maxWidth: '510px' }}>
+            <div className="dash-modal-header">
+              <h3 className="dash-modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ef4444' }}>
+                <Trash2 size={18} /> Permanently Delete Campaign
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPermanentDeleteModal(false);
+                  setPermanentDeleteCampaign(null);
+                }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div>
+              <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                As an Administrator, you are requesting to <strong>permanently purge</strong> campaign <strong>&ldquo;{permanentDeleteCampaign.title}&rdquo;</strong> (<span style={{ fontFamily: 'monospace' }}>{permanentDeleteCampaign.campaign_code}</span>) from the database.
+              </p>
+
+              <div
+                style={{
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: '8px',
+                  padding: '0.85rem 1rem',
+                  fontSize: '0.82rem',
+                  color: 'var(--text-primary)',
+                  marginBottom: '1.25rem',
+                }}
+              >
+                <strong style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <AlertTriangle size={15} /> Warning: Irreversible Database Operation
+                </strong>
+                <ul style={{ paddingLeft: '1.2rem', marginTop: '0.35rem', color: 'var(--text-secondary)', lineHeight: '1.45' }}>
+                  <li>This campaign record will be completely removed from the PostgreSQL database.</li>
+                  <li>All consultation questions, assigned participants, comments, and stakeholder feedback submissions will be deleted.</li>
+                  <li><strong>This action cannot be undone or reverted.</strong></li>
+                  <li>Campaign Managers do not possess this administrative privilege.</li>
+                </ul>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem' }}>
+                <button
+                  type="button"
+                  className="dash-btn-secondary"
+                  disabled={permanentDeleteLoading}
+                  onClick={() => {
+                    setShowPermanentDeleteModal(false);
+                    setPermanentDeleteCampaign(null);
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="dash-btn-primary"
+                  disabled={permanentDeleteLoading}
+                  onClick={handleConfirmPermanentDelete}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    background: '#ef4444',
+                    borderColor: '#dc2626',
+                    color: '#ffffff',
+                  }}
+                >
+                  <Trash2 size={14} />
+                  {permanentDeleteLoading ? 'Purging from Database...' : 'Confirm Permanent Deletion'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════
+          MODAL 9: CAMPAIGN RESPONSES & SENTIMENT MULTI-VIEW
+         ══════════════════════════════════════════════════════════════ */}
+      {showResponsesModal && createPortal(
+        <div className="dash-modal-backdrop">
+          <div className="dash-modal dash-modal--extra-wide animate-fade-in" style={{ maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="dash-modal-header" style={{ flexShrink: 0, marginBottom: '0.85rem' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <h3 className="dash-modal-title">
+                    {responsesData?.campaign?.title || 'Submitted Stakeholder Feedback'}
+                  </h3>
+                  {responsesData?.campaign?.campaignCode && (
+                    <span style={{ fontSize: '0.72rem', background: 'var(--brand-accent-light, #fff7ed)', color: 'var(--brand-accent)', padding: '0.15rem 0.5rem', borderRadius: '4px', fontWeight: 700, fontFamily: 'monospace' }}>
+                      {responsesData.campaign.campaignCode}
+                    </span>
+                  )}
+                  <span className={`status-badge status-badge--${(responsesData?.campaign?.status || '').toLowerCase()}`}>
+                    {responsesData?.campaign?.status}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                  Detailed breakdown of qualitative and structured consultation answers submitted by verified stakeholders.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowResponsesModal(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.25rem' }}
+                title="Close modal"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {loadingResponses ? (
+              <div style={{ textAlign: 'center', padding: '4rem 2rem', color: 'var(--text-muted)' }}>
+                <RefreshCw size={24} className="spin" style={{ margin: '0 auto 0.75rem', display: 'block', color: 'var(--brand-accent)' }} />
+                Loading consultation responses...
+              </div>
+            ) : !responsesData || !responsesData.responses || responsesData.responses.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '3.5rem 2rem', color: 'var(--text-muted)' }}>
+                <MessageSquare size={36} style={{ margin: '0 auto 0.75rem', opacity: 0.4, display: 'block' }} />
+                <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.35rem' }}>No Feedback Recorded Yet</h4>
+                <p style={{ fontSize: '0.85rem', maxWidth: '420px', margin: '0 auto' }}>
+                  No participants have submitted feedback for this consultation yet. Responses will appear here in real-time as invited stakeholders complete the feedback form.
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                {/* ── Search & Filter Bar ── */}
+                {(() => {
+                  const searchLower = responsesSearchText.toLowerCase();
+                  const filtered = responsesData.responses.filter(resp =>
+                    (resp.questionText || '').toLowerCase().includes(searchLower) ||
+                    (resp.text || '').toLowerCase().includes(searchLower) ||
+                    (resp.author || '').toLowerCase().includes(searchLower) ||
+                    (resp.department || '').toLowerCase().includes(searchLower) ||
+                    (resp.designation || '').toLowerCase().includes(searchLower)
+                  );
+
+                  return (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem', flexShrink: 0 }}>
+                        <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <LayoutDashboard size={15} style={{ color: 'var(--brand-accent)' }} />
+                          <span>Showing <strong>{filtered.length}</strong> stakeholder response{filtered.length !== 1 ? 's' : ''}</span>
+                        </div>
+
+                        {/* Search filter & Delete All */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                          <div style={{ position: 'relative', minWidth: '240px' }}>
+                            <Search size={14} style={{ position: 'absolute', left: '0.65rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                            <input
+                              type="text"
+                              className="dash-input"
+                              placeholder="Filter by question, stakeholder, or comment..."
+                              value={responsesSearchText}
+                              onChange={e => setResponsesSearchText(e.target.value)}
+                              style={{ paddingLeft: '2rem', height: '34px', fontSize: '0.8rem' }}
+                            />
+                            {responsesSearchText && (
+                              <button
+                                type="button"
+                                onClick={() => setResponsesSearchText('')}
+                                style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                              >
+                                <X size={13} />
+                              </button>
+                            )}
+                          </div>
+
+                          {(isAdmin || isManager) && responsesData?.responses?.length > 0 && (
+                            <button
+                              type="button"
+                              className="dash-btn-secondary dash-btn-sm"
+                              onClick={() => setShowDeleteAllResponsesModal(true)}
+                              style={{
+                                color: '#ef4444',
+                                borderColor: 'rgba(239, 68, 68, 0.35)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                                fontWeight: 600,
+                                height: '34px',
+                                whiteSpace: 'nowrap'
+                              }}
+                              title="Delete all responses for this consultation campaign"
+                            >
+                              <Trash2 size={13} /> Delete All Responses
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* ── Tabular View Only ── */}
+                      <div style={{ flex: 1, overflowY: 'auto', paddingRight: '0.25rem' }}>
+                        {filtered.length === 0 ? (
+                          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                            No responses match &ldquo;{responsesSearchText}&rdquo;.
+                          </div>
+                        ) : (
+                          <div className="dash-table-wrap">
+                            <table className="dash-table">
+                              <thead>
+                                <tr>
+                                  <th style={{ width: '26%' }}>Question</th>
+                                  <th style={{ width: '16%' }}>Stakeholder</th>
+                                  <th style={{ width: '16%' }}>Department &amp; Role</th>
+                                  <th>Stakeholder Response</th>
+                                  <th style={{ width: '12%' }}>Submitted</th>
+                                  <th style={{ width: '8%', textAlign: 'center' }}>Action</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {filtered.map(resp => (
+                                  <tr key={resp.id}>
+                                    <td style={{ fontWeight: '600', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                                      Q{resp.questionOrder}: {resp.questionText}
+                                    </td>
+                                    <td style={{ fontWeight: '700', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+                                      {resp.author}
+                                    </td>
+                                    <td style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                                      {resp.department} {resp.designation ? `(${resp.designation})` : ''}
+                                    </td>
+                                    <td style={{ lineHeight: '1.5', fontSize: '0.85rem' }}>{resp.text}</td>
+                                    <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                      {new Date(resp.createdAt).toLocaleDateString()}
+                                    </td>
+                                    <td style={{ textAlign: 'center' }}>
+                                      {(isAdmin || isManager) && (
+                                        <button
+                                          type="button"
+                                          className="dash-btn-secondary dash-btn-sm"
+                                          onClick={() => setDeletingResponse(resp)}
+                                          title="Delete this response"
+                                          style={{
+                                            color: '#ef4444',
+                                            borderColor: 'rgba(239, 68, 68, 0.25)',
+                                            padding: '0.2rem 0.4rem',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                          }}
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {responsesData.pagination.totalPages > 1 && (
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1rem' }}>
+                            <button
+                              type="button"
+                              className="dash-btn-secondary dash-btn-sm"
+                              disabled={responsesPage <= 1}
+                              onClick={() => openResponsesView(responsesData.campaign.id, responsesPage - 1)}
+                            >
+                              Previous
+                            </button>
+                            <span style={{ display: 'flex', alignItems: 'center', padding: '0 0.5rem', fontSize: '0.84rem' }}>
+                              Page {responsesPage} of {responsesData.pagination.totalPages}
+                            </span>
+                            <button
+                              type="button"
+                              className="dash-btn-secondary dash-btn-sm"
+                              disabled={responsesPage >= responsesData.pagination.totalPages}
+                              onClick={() => openResponsesView(responsesData.campaign.id, responsesPage + 1)}
+                            >
+                              Next
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════
+          MODAL 9b: DELETE SINGLE RESPONSE CONFIRMATION MODAL
+         ══════════════════════════════════════════════════════════════ */}
+      {deletingResponse && createPortal(
+        <div className="dash-modal-backdrop" style={{ zIndex: 110000 }}>
+          <div className="dash-modal animate-fade-in" style={{ maxWidth: '460px' }}>
+            <div className="dash-modal-header" style={{ marginBottom: '0.85rem' }}>
+              <h3 className="dash-modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.05rem', color: '#ef4444' }}>
+                <Trash2 size={18} /> Delete Stakeholder Response
+              </h3>
+              <button
+                type="button"
+                onClick={() => setDeletingResponse(null)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: '1.5', margin: '0 0 0.85rem' }}>
+                Are you sure you want to permanently delete this response submitted by <strong>{deletingResponse.author || 'Stakeholder'}</strong> for question <strong>Q{deletingResponse.questionOrder}: {deletingResponse.questionText}</strong>?
+              </p>
+              <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '0.75rem', marginBottom: '1.25rem', fontSize: '0.82rem', fontStyle: 'italic', color: 'var(--text-primary)', maxHeight: '120px', overflowY: 'auto' }}>
+                &ldquo;{deletingResponse.text}&rdquo;
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem' }}>
+                <button
+                  type="button"
+                  className="dash-btn-secondary"
+                  disabled={deletingResponseLoading}
+                  onClick={() => setDeletingResponse(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="dash-btn-primary"
+                  disabled={deletingResponseLoading}
+                  onClick={handleConfirmDeleteSingleResponse}
+                  style={{ background: '#ef4444', borderColor: '#ef4444', color: '#fff', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                >
+                  <Trash2 size={13} />
+                  {deletingResponseLoading ? 'Deleting...' : 'Delete Response'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════
+          MODAL 9c: DELETE ALL RESPONSES CONFIRMATION MODAL
+         ══════════════════════════════════════════════════════════════ */}
+      {showDeleteAllResponsesModal && createPortal(
+        <div className="dash-modal-backdrop" style={{ zIndex: 110000 }}>
+          <div className="dash-modal animate-fade-in" style={{ maxWidth: '480px' }}>
+            <div className="dash-modal-header" style={{ marginBottom: '0.85rem' }}>
+              <h3 className="dash-modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.05rem', color: '#ef4444' }}>
+                <AlertTriangle size={18} /> Delete All Consultation Responses
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowDeleteAllResponsesModal(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div>
+              <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: '1.5', margin: '0 0 0.85rem' }}>
+                Are you sure you want to permanently delete <strong>all ({responsesData?.responses?.length || 0}) responses</strong> for <strong>{responsesData?.campaign?.title}</strong>?
+              </p>
+              <p style={{ fontSize: '0.82rem', color: 'var(--sentiment-negative)', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '6px', padding: '0.65rem 0.8rem', margin: '0 0 1.25rem', lineHeight: '1.45' }}>
+                This will delete all stakeholder submissions, qualitative comments, and reset participant statuses to PENDING so stakeholders can re-submit if the consultation is restarted. This action cannot be undone.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem' }}>
+                <button
+                  type="button"
+                  className="dash-btn-secondary"
+                  disabled={deleteAllResponsesLoading}
+                  onClick={() => setShowDeleteAllResponsesModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="dash-btn-primary"
+                  disabled={deleteAllResponsesLoading}
+                  onClick={handleConfirmDeleteAllResponses}
+                  style={{ background: '#ef4444', borderColor: '#ef4444', color: '#fff', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                >
+                  <Trash2 size={13} />
+                  {deleteAllResponsesLoading ? 'Deleting All...' : 'Delete All Responses'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════
+          MODAL 10: UNSAVED WIZARD NAVIGATION GUARD MODAL
+         ══════════════════════════════════════════════════════════════ */}
+      {showNavWarningModal && createPortal(
+        <div className="dash-modal-backdrop" style={{ zIndex: 100000 }}>
+          <div className="dash-modal animate-fade-in" style={{ maxWidth: '500px', borderLeft: '4px solid #f97316' }}>
+            <div className="dash-modal-header" style={{ marginBottom: '1rem', paddingBottom: '0.65rem' }}>
+              <h3 className="dash-modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.15rem' }}>
+                <AlertTriangle size={20} color="#f97316" /> Unsaved Consultation Edits
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNavWarningModal(false);
+                  setPendingNav(null);
+                }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: '1.5', margin: '0 0 1.25rem' }}>
+              You are currently editing a consultation campaign questionnaire. If you navigate away now, what would you like to do with your changes?
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+              <button
+                type="button"
+                className="dash-btn-primary"
+                onClick={() => {
+                  const nav = pendingNav;
+                  setShowNavWarningModal(false);
+                  setPendingNav(null);
+                  if (nav?.action === 'logout') {
+                    logout();
+                  } else if (nav?.view) {
+                    setFilterByManagerId(null);
+                    setEditingCampaign(null);
+                    setActiveView(nav.view);
+                  }
+                }}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+              >
+                <CheckCircle2 size={16} /> Save Draft &amp; Leave
+              </button>
+              <button
+                type="button"
+                className="dash-btn-secondary"
+                onClick={() => {
+                  try {
+                    localStorage.removeItem('potentpolicy_campaign_wizard_draft_v1');
+                  } catch {}
+                  const nav = pendingNav;
+                  setShowNavWarningModal(false);
+                  setPendingNav(null);
+                  setEditingCampaign(null);
+                  if (nav?.action === 'logout') {
+                    logout();
+                  } else if (nav?.view) {
+                    setFilterByManagerId(null);
+                    setActiveView(nav.view);
+                  }
+                }}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', color: '#ef4444', borderColor: '#fca5a5' }}
+              >
+                <Trash2 size={15} /> Discard Changes &amp; Leave
+              </button>
+              <button
+                type="button"
+                className="dash-btn-secondary"
+                onClick={() => {
+                  setShowNavWarningModal(false);
+                  setPendingNav(null);
+                }}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+              >
+                Keep Editing Questionnaire
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

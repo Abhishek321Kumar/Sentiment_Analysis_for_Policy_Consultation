@@ -433,11 +433,78 @@ router.get('/stats', async (req, res) => {
     const myRows = myCampaignsRes.rows;
 
     const myFeedbackRes = await db.query(
-      `SELECT COUNT(*) FROM comments cm
-       JOIN campaigns c ON cm.campaign_id = c.id
-       WHERE c.organisation_id = $1 AND c.created_by = $2 AND c.status != 'DELETED'`,
-      [orgId, userId]
+      `SELECT COUNT(*) FROM (
+        SELECT fs.id FROM feedback_submissions fs
+        JOIN campaigns c ON fs.campaign_id = c.id
+        WHERE c.organisation_id = $1 AND c.status != 'DELETED'
+        UNION ALL
+        SELECT cm.id FROM comments cm
+        JOIN campaigns c ON cm.campaign_id = c.id
+        WHERE c.organisation_id = $1 AND c.status != 'DELETED'
+          AND NOT EXISTS (SELECT 1 FROM feedback_submissions fs2 WHERE fs2.campaign_id = c.id)
+      ) all_fb`,
+      [orgId]
     );
+
+    let mySentiment = { positive: 0, neutral: 0, negative: 0 };
+    let recentFeedback = [];
+    try {
+      const sentimentRows = await db.query(
+        `SELECT sentiment, COUNT(*) as count FROM (
+          SELECT fa.sentiment
+          FROM feedback_answers fa
+          JOIN feedback_submissions fs ON fa.submission_id = fs.id
+          JOIN campaigns c ON fs.campaign_id = c.id
+          WHERE c.organisation_id = $1 AND c.status != 'DELETED'
+            AND fa.sentiment IS NOT NULL AND fa.sentiment != ''
+          UNION ALL
+          SELECT cm.sentiment
+          FROM comments cm
+          JOIN campaigns c ON cm.campaign_id = c.id
+          WHERE c.organisation_id = $1 AND c.status != 'DELETED'
+            AND cm.sentiment IS NOT NULL AND cm.sentiment != ''
+            AND NOT EXISTS (
+              SELECT 1 FROM feedback_submissions fs2
+              JOIN feedback_answers fa2 ON fa2.submission_id = fs2.id
+              WHERE fs2.campaign_id = c.id AND fa2.sentiment IS NOT NULL
+            )
+        ) all_s
+        GROUP BY sentiment`,
+        [orgId]
+      );
+      sentimentRows.rows.forEach(r => {
+        const s = (r.sentiment || '').toLowerCase();
+        const cnt = parseInt(r.count, 10) || 0;
+        if (s.includes('pos')) mySentiment.positive += cnt;
+        else if (s.includes('neg') || s.includes('crit')) mySentiment.negative += cnt;
+        else mySentiment.neutral += cnt;
+      });
+
+      const recentFbRows = await db.query(
+        `SELECT id, text, sentiment, created_at, campaign_title, campaign_code FROM (
+          SELECT cm.id, cm.text, cm.sentiment, cm.created_at, c.title as campaign_title, c.campaign_code
+          FROM comments cm
+          JOIN campaigns c ON cm.campaign_id = c.id
+          WHERE c.organisation_id = $1 AND c.status != 'DELETED'
+          UNION ALL
+          SELECT fa.id, fa.answer_value as text, fa.sentiment, fa.created_at, c.title as campaign_title, c.campaign_code
+          FROM feedback_answers fa
+          JOIN feedback_submissions fs ON fa.submission_id = fs.id
+          JOIN campaigns c ON fs.campaign_id = c.id
+          WHERE c.organisation_id = $1 AND c.status != 'DELETED'
+            AND fa.response_type = 'TEXT' AND fa.answer_value IS NOT NULL AND LENGTH(TRIM(fa.answer_value)) > 0
+            AND NOT EXISTS (
+              SELECT 1 FROM comments cm2 WHERE cm2.campaign_id = c.id AND cm2.text = fa.answer_value
+            )
+        ) recent_stream
+        ORDER BY created_at DESC
+        LIMIT 5`,
+        [orgId]
+      );
+      recentFeedback = recentFbRows.rows;
+    } catch (fbErr) {
+      console.warn('Feedback stats notice:', fbErr.message);
+    }
 
     return res.json({
       stats: {
@@ -470,6 +537,8 @@ router.get('/stats', async (req, res) => {
         draftCampaigns: myRows.filter(r => r.status === 'DRAFT').length,
         totalFeedback: parseInt(myFeedbackRes.rows[0]?.count || '0', 10),
       },
+      mySentiment,
+      recentFeedback,
     });
   } catch (err) {
     console.error('Error fetching dashboard stats:', err);

@@ -347,8 +347,12 @@ export default function CampaignFormBuilder({
                       disabled={readOnly || hasExistingSubmissions}
                       className="dash-input"
                       style={{ width: '68px', padding: '0.25rem 0.45rem', fontSize: '0.78rem' }}
-                      value={q.minLength || 5}
-                      onChange={e => handleQuestionFieldChange(idx, 'minLength', parseInt(e.target.value, 10) || 5)}
+                      value={q.minLength !== undefined && q.minLength !== null ? q.minLength : 5}
+                      onChange={e => handleQuestionFieldChange(idx, 'minLength', e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                      onBlur={e => {
+                        const val = parseInt(e.target.value, 10);
+                        handleQuestionFieldChange(idx, 'minLength', isNaN(val) ? 5 : Math.max(1, Math.min(100, val)));
+                      }}
                     />
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem' }}>
@@ -360,13 +364,14 @@ export default function CampaignFormBuilder({
                       disabled={readOnly || hasExistingSubmissions}
                       className="dash-input"
                       style={{ width: '80px', padding: '0.25rem 0.45rem', fontSize: '0.78rem' }}
-                      value={q.maxLength || 2000}
-                      onChange={e => handleQuestionFieldChange(idx, 'maxLength', parseInt(e.target.value, 10) || 2000)}
+                      value={q.maxLength !== undefined && q.maxLength !== null ? q.maxLength : 2000}
+                      onChange={e => handleQuestionFieldChange(idx, 'maxLength', e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                      onBlur={e => {
+                        const val = parseInt(e.target.value, 10);
+                        handleQuestionFieldChange(idx, 'maxLength', isNaN(val) ? 2000 : Math.max(10, Math.min(5000, val)));
+                      }}
                     />
                   </div>
-                  <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-                    Sent to NLP Sentiment Analysis service on submission
-                  </span>
                 </div>
               )}
 
@@ -439,8 +444,12 @@ export default function CampaignFormBuilder({
                       disabled={readOnly || hasExistingSubmissions}
                       className="dash-input"
                       style={{ width: '60px', padding: '0.25rem 0.45rem', fontSize: '0.78rem' }}
-                      value={q.minValue ?? 1}
-                      onChange={e => handleQuestionFieldChange(idx, 'minValue', parseInt(e.target.value, 10) || 1)}
+                      value={q.minValue !== undefined && q.minValue !== null ? q.minValue : 1}
+                      onChange={e => handleQuestionFieldChange(idx, 'minValue', e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                      onBlur={e => {
+                        const val = parseInt(e.target.value, 10);
+                        handleQuestionFieldChange(idx, 'minValue', isNaN(val) ? 1 : Math.max(0, Math.min(1, val)));
+                      }}
                     />
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem' }}>
@@ -452,8 +461,12 @@ export default function CampaignFormBuilder({
                       disabled={readOnly || hasExistingSubmissions}
                       className="dash-input"
                       style={{ width: '60px', padding: '0.25rem 0.45rem', fontSize: '0.78rem' }}
-                      value={q.maxValue ?? 5}
-                      onChange={e => handleQuestionFieldChange(idx, 'maxValue', parseInt(e.target.value, 10) || 5)}
+                      value={q.maxValue !== undefined && q.maxValue !== null ? q.maxValue : 5}
+                      onChange={e => handleQuestionFieldChange(idx, 'maxValue', e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                      onBlur={e => {
+                        const val = parseInt(e.target.value, 10);
+                        handleQuestionFieldChange(idx, 'maxValue', isNaN(val) ? 5 : Math.max(2, Math.min(10, val)));
+                      }}
                     />
                   </div>
                   <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>

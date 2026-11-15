@@ -520,30 +520,6 @@ export default function App() {
               </div>
 
               {/* ── CONTEXT-AWARE SMART ACTION BANNER ── */}
-              {selectedEmail.template === 'CAMPAIGN_INVITE' && parsedData.campaignCode && (
-                <div className="pm-action-banner pm-action-banner--campaign">
-                  <div className="pm-action-banner__left">
-                    <span className="pm-action-banner__title">
-                      Stakeholder Policy Consultation Invitation
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
-                      <span className="pm-action-banner__desc">Campaign Code:</span>
-                      <span className="pm-action-banner__code">{parsedData.campaignCode}</span>
-                    </div>
-                  </div>
-
-                  <a
-                    href={`${potentPolicyUrl}/participate?code=${parsedData.campaignCode}&email=${encodeURIComponent(selectedEmail.to_email)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="pm-action-banner__btn"
-                  >
-                    <span>Enter Consultation as Stakeholder</span>
-                    <ArrowRight size={15} />
-                  </a>
-                </div>
-              )}
-
               {selectedEmail.template === 'OTP' && parsedData.otpCode && (
                 <div className="pm-action-banner pm-action-banner--otp">
                   <div className="pm-action-banner__left">

@@ -189,13 +189,7 @@ export default function LoginPage() {
           {/* Role Cards Grid */}
           <div className="role-cards-grid">
             {/* Card 1: Administrator */}
-            <div
-              className="role-card-item"
-              onClick={() => handleRoleSelect('admin')}
-              role="button"
-              tabIndex={0}
-              onKeyDown={e => e.key === 'Enter' && handleRoleSelect('admin')}
-            >
+            <div className="role-card-item">
               <div className="role-card-img-wrap">
                 <img
                   src="/role-admin.jpg"
@@ -228,7 +222,11 @@ export default function LoginPage() {
                   Oversee institutional governance, manage Campaign Managers, and maintain the central stakeholder directory.
                 </p>
 
-                <button type="button" className="role-card-btn">
+                <button
+                  type="button"
+                  className="role-card-btn"
+                  onClick={() => handleRoleSelect('admin')}
+                >
                   Login as Administrator
                   <ArrowRight size={16} />
                 </button>
@@ -247,13 +245,7 @@ export default function LoginPage() {
             </div>
 
             {/* Card 2: Campaign Manager */}
-            <div
-              className="role-card-item"
-              onClick={() => handleRoleSelect('manager')}
-              role="button"
-              tabIndex={0}
-              onKeyDown={e => e.key === 'Enter' && handleRoleSelect('manager')}
-            >
+            <div className="role-card-item">
               <div className="role-card-img-wrap">
                 <img
                   src="/role-manager.jpg"
@@ -288,7 +280,11 @@ export default function LoginPage() {
                   Design consultation campaigns, invite stakeholder cohorts, and analyze participant policy feedback.
                 </p>
 
-                <button type="button" className="role-card-btn">
+                <button
+                  type="button"
+                  className="role-card-btn"
+                  onClick={() => handleRoleSelect('manager')}
+                >
                   Login as Campaign Manager
                   <ArrowRight size={16} />
                 </button>

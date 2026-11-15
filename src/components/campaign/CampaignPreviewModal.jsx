@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, CheckCircle2, Star, HelpCircle, AlertCircle, FileText, Calendar } from 'lucide-react';
+import MarkdownViewer from '../common/MarkdownViewer';
 
 export default function CampaignPreviewModal({
   isOpen,
@@ -31,8 +33,8 @@ export default function CampaignPreviewModal({
     setDummyAnswers(p => ({ ...p, [qId]: rating }));
   };
 
-  return (
-    <div className="dash-modal-backdrop" onClick={onClose}>
+  return typeof document !== 'undefined' ? createPortal(
+    <div className="dash-modal-backdrop" onClick={onClose} style={{ zIndex: 99999 }}>
       <div
         className="dash-modal dash-modal--wide"
         onClick={e => e.stopPropagation()}
@@ -80,9 +82,9 @@ export default function CampaignPreviewModal({
               {campaignDetails.title || 'Consultation Title'}
             </h2>
             {campaignDetails.description && (
-              <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 0.75rem 0' }}>
-                {campaignDetails.description}
-              </p>
+              <div style={{ maxHeight: '240px', overflowY: 'auto', margin: '0 0 0.75rem 0' }}>
+                <MarkdownViewer content={campaignDetails.description} />
+              </div>
             )}
 
             {/* Metadata Pills */}
@@ -319,7 +321,8 @@ export default function CampaignPreviewModal({
           </button>
         </div>
       </div>
-    </div>
-  );
+    </div>,
+    document.body
+  ) : null;
 }
 

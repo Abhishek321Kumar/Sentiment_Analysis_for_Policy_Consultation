@@ -53,6 +53,12 @@ export const api = {
     }
     return apiFetch(endpoint, { method: 'DELETE', ...bodyOrOptions });
   },
+  delete: (endpoint, bodyOrOptions, options) => {
+    if (bodyOrOptions && !bodyOrOptions.headers && !bodyOrOptions.method) {
+      return apiFetch(endpoint, { method: 'DELETE', body: JSON.stringify(bodyOrOptions), ...options });
+    }
+    return apiFetch(endpoint, { method: 'DELETE', ...bodyOrOptions });
+  },
 };
 
 export default api;

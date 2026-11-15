@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import {
   X, Copy, Check, Calendar, Users, FileText, ExternalLink,
-  Search, CheckCircle2, Clock, AlertCircle, HelpCircle, Send
+  Search, CheckCircle2, Clock, AlertCircle, HelpCircle, Send, RotateCcw, Eye
 } from 'lucide-react';
+import MarkdownViewer from '../common/MarkdownViewer';
 
 export default function CampaignDetailsModal({
   isOpen,
@@ -13,6 +14,10 @@ export default function CampaignDetailsModal({
   onEditDraft,
   onDelete,
   onResendInvitations,
+  isAdmin = false,
+  onRevertToDraft,
+  onPermanentDelete,
+  onViewResponses,
 }) {
   if (!isOpen || !campaign) return null;
 
@@ -288,7 +293,7 @@ export default function CampaignDetailsModal({
 
                     {qType === 'TEXT' && (
                       <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '0.4rem' }}>
-                        Character limit: {q.min_length ?? 5} to {q.max_length ?? 2000} chars &bull; Sentiment Analysis Enabled
+                        Character limit: {q.min_length ?? 5} to {q.max_length ?? 2000} characters
                       </div>
                     )}
                   </div>
@@ -333,9 +338,9 @@ export default function CampaignDetailsModal({
                   <span style={{ fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem' }}>
                     Background &amp; Description
                   </span>
-                  <p style={{ fontSize: '0.86rem', color: 'var(--text-primary)', margin: 0, lineHeight: 1.5 }}>
-                    {campaign.description}
-                  </p>
+                  <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                    <MarkdownViewer content={campaign.description} />
+                  </div>
                 </div>
               )}
 
@@ -378,9 +383,57 @@ export default function CampaignDetailsModal({
                 <Send size={12} /> Resend Invitations
               </button>
             )}
+            {onViewResponses && !isAdmin && (Number(campaign.response_count) > 0 || participants.some(p => p.submission_status === 'SUBMITTED' || p.submitted_at)) && (
+              <button
+                type="button"
+                className="dash-btn-primary dash-btn-sm"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                onClick={() => {
+                  onClose();
+                  onViewResponses(campaign.id);
+                }}
+                title="View submitted stakeholder feedback and sentiment classifications"
+              >
+                <Eye size={13} /> View Responses ({campaign.response_count || participants.filter(p => p.submission_status === 'SUBMITTED' || p.submitted_at).length})
+              </button>
+            )}
           </div>
 
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            {((isDeleted && isAdmin) || isClosed) && onRevertToDraft && (
+              <button
+                type="button"
+                className="dash-btn-primary dash-btn-sm"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                onClick={() => {
+                  onClose();
+                  onRevertToDraft(campaign);
+                }}
+                title={isClosed ? 'Restart completed consultation by reverting to Draft' : 'Administrator privilege: Revert deleted campaign back to Draft'}
+              >
+                <RotateCcw size={13} /> {isClosed ? 'Restart / Revert to Draft' : 'Revert to Draft'}
+              </button>
+            )}
+            {isDeleted && isAdmin && onPermanentDelete && (
+              <button
+                type="button"
+                className="dash-btn-secondary dash-btn-sm"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  color: '#ef4444',
+                  borderColor: 'rgba(239, 68, 68, 0.35)',
+                }}
+                onClick={() => {
+                  onClose();
+                  onPermanentDelete(campaign);
+                }}
+                title="Administrator privilege: Delete campaign permanently from the database"
+              >
+                Delete Permanently
+              </button>
+            )}
             {!isDeleted && onDelete && (
               <button
                 type="button"

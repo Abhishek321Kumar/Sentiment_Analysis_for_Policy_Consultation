@@ -1,11 +1,14 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   FileText, ListFilter, Users, CheckCircle2, AlertCircle, ArrowRight,
   ArrowLeft, Search, Filter, Plus, Save, Send, Calendar, CheckSquare, Square, Eye,
-  Trash2, X, RefreshCw, Edit3, Clock, ShieldCheck
+  Trash2, X, RefreshCw, Edit3, Clock, ShieldCheck, Info
 } from 'lucide-react';
 import CampaignFormBuilder from './CampaignFormBuilder';
 import CampaignPreviewModal from './CampaignPreviewModal';
+import MarkdownEditor from '../common/MarkdownEditor';
+import MarkdownViewer from '../common/MarkdownViewer';
 
 const STEPS = [
   { id: 1, label: '1. Campaign Details', description: 'Context & dates' },
@@ -376,7 +379,7 @@ export default function CampaignWizard({
   };
 
   const handleCancelClick = () => {
-    if (hasDraft) {
+    if (hasDraft || title.trim() || description.trim() || questions.length > 1 || selectedStakeholderIds.length > 0) {
       setShowExitModal(true);
     } else {
       onCancel();
@@ -477,10 +480,10 @@ export default function CampaignWizard({
       questionType: q.questionType || 'TEXT',
       isRequired: q.isRequired !== false,
       options: q.options || [],
-      minValue: q.minValue ?? 1,
-      maxValue: q.maxValue ?? 5,
-      minLength: q.minLength ?? 5,
-      maxLength: q.maxLength ?? 2000,
+      minValue: Number(q.minValue) || 1,
+      maxValue: Number(q.maxValue) || 5,
+      minLength: Number(q.minLength) || 5,
+      maxLength: Number(q.maxLength) || 2000,
     })),
     stakeholderIds: selectedStakeholderIds,
   });
@@ -564,17 +567,6 @@ export default function CampaignWizard({
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          {(hasDraft || title.trim() || description.trim()) && (
-            <button
-              type="button"
-              className="dash-btn-secondary"
-              style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.35)' }}
-              onClick={() => setShowDiscardModal(true)}
-              title="Discard all unsaved progress and clear draft"
-            >
-              <Trash2 size={14} /> Discard Changes
-            </button>
-          )}
           <button
             type="button"
             className="dash-btn-secondary"
@@ -617,21 +609,6 @@ export default function CampaignWizard({
             </span>
           </div>
           <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
-            <button
-              type="button"
-              onClick={() => setShowDiscardModal(true)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#ef4444',
-                fontSize: '0.78rem',
-                cursor: 'pointer',
-                fontWeight: 600,
-                textDecoration: 'underline',
-              }}
-            >
-              Discard changes
-            </button>
             <button
               type="button"
               onClick={() => setDraftRestoredNotice(false)}
@@ -762,25 +739,16 @@ export default function CampaignWizard({
             </span>
           </div>
 
-          <div style={{ marginBottom: '1.15rem' }}>
-            <label className="dash-label">Consultation Description *</label>
-            <textarea
+          <div style={{ marginBottom: '1.25rem' }}>
+            <MarkdownEditor
               required
-              className="dash-textarea"
-              style={{
-                width: '100%',
-                maxWidth: '100%',
-                height: '120px',
-                minHeight: '120px',
-                maxHeight: '120px',
-                resize: 'none',
-                overflowY: 'auto',
-                boxSizing: 'border-box',
-              }}
-              placeholder="Provide background context, rationale, and policy background for invited stakeholders..."
+              label="Consultation Description & Policy Text"
+              placeholder="Provide background context, policy clauses, and objectives for invited stakeholders..."
               value={description}
-              onChange={e => {
-                setDescription(e.target.value);
+              minHeight="150px"
+              maxHeight="320px"
+              onChange={val => {
+                setDescription(val);
                 if (validationError) setValidationError('');
               }}
             />
@@ -859,7 +827,11 @@ export default function CampaignWizard({
               if (validationError) setValidationError('');
             }}
             campaignDetails={campaignDetailsObj}
-            hasExistingSubmissions={Boolean(initialData && Number(initialData.response_count || initialData.responseCount) > 0)}
+            hasExistingSubmissions={Boolean(
+              initialData &&
+              initialData.status !== 'DRAFT' &&
+              Number(initialData.response_count || initialData.responseCount) > 0
+            )}
             orgName={orgName}
           />
 
@@ -1194,13 +1166,13 @@ export default function CampaignWizard({
           </div>
 
           {/* 2. Review Section 1: Campaign Details & Context */}
-          <div className="dash-panel" style={{ padding: '1.35rem 1.5rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+          <div className="dash-panel" style={{ padding: '1.5rem', marginBottom: '1.25rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.15rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
               <div>
-                <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                   1. Policy Context &amp; Consultation Window
                 </h4>
-                <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>Background rationale and participation timeline</span>
+                <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>Background rationale, policy provisions, and consultation details</span>
               </div>
               <button
                 type="button"
@@ -1212,22 +1184,43 @@ export default function CampaignWizard({
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
-              <div>
-                <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>
-                  Consultation Description
-                </span>
-                <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: 1.55, margin: 0, whiteSpace: 'pre-wrap' }}>
-                  {description || 'No description provided.'}
-                </p>
+            {/* Clean, Full-width Structured Overview Layout */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {/* Full-width Consultation Description / Policy Document */}
+              <div style={{ background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)', padding: '1.2rem 1.35rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.75rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+                  <FileText size={15} style={{ color: 'var(--brand-accent)' }} />
+                  <span style={{ fontSize: '0.76rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-primary)' }}>
+                    Consultation Description &amp; Policy Text
+                  </span>
+                </div>
+                <div style={{ maxHeight: '420px', overflowY: 'auto', paddingRight: '0.5rem' }}>
+                  <MarkdownViewer content={description} />
+                </div>
               </div>
 
-              {additionalInstructions && (
-                <div>
-                  <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>
-                    Stakeholder Instructions (Optional)
+              {/* Objectives block (if provided) */}
+              {objectives && objectives.trim() && (
+                <div style={{ background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)', padding: '1rem 1.25rem' }}>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--brand-accent)', display: 'block', marginBottom: '0.35rem' }}>
+                    Consultation Objectives
                   </span>
-                  <div style={{ background: 'var(--bg-secondary)', padding: '0.75rem 0.9rem', borderRadius: '7px', fontSize: '0.82rem', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
+                  <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: 1.55, margin: 0, whiteSpace: 'pre-wrap' }}>
+                    {objectives}
+                  </p>
+                </div>
+              )}
+
+              {/* Stakeholder Instructions (Full-width distinct callout banner) */}
+              {additionalInstructions && additionalInstructions.trim() && (
+                <div style={{ background: 'rgba(234, 88, 12, 0.05)', borderLeft: '4px solid var(--brand-accent)', borderRadius: '0 8px 8px 0', padding: '0.9rem 1.2rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.35rem' }}>
+                    <Info size={15} style={{ color: 'var(--brand-accent)' }} />
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--brand-accent)' }}>
+                      Stakeholder Guidance &amp; Instructions
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
                     {additionalInstructions}
                   </div>
                 </div>
@@ -1264,76 +1257,156 @@ export default function CampaignWizard({
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '340px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
               {questions.map((q, idx) => {
                 const qType = (q.questionType || 'TEXT').toUpperCase();
                 const isReq = q.isRequired !== false;
                 const opts = Array.isArray(q.options) ? q.options : [];
 
+                const typeLabels = {
+                  TEXT: 'Open Text',
+                  RADIO: 'Single Choice',
+                  CHECKBOX: 'Multiple Choice',
+                  DROPDOWN: 'Dropdown Selection',
+                  RATING: 'Rating Scale',
+                };
+
                 return (
                   <div
                     key={q.id || idx}
                     style={{
-                      padding: '0.85rem 1rem',
+                      padding: '1rem 1.25rem',
                       background: 'var(--bg-secondary)',
-                      borderRadius: '8px',
+                      borderRadius: '9px',
                       border: '1px solid var(--border-color)',
                       display: 'flex',
                       flexDirection: 'column',
-                      gap: '0.45rem',
+                      gap: '0.65rem',
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.45rem' }}>
-                        <span style={{ color: 'var(--brand-accent)', fontWeight: 700, fontSize: '0.88rem' }}>
-                          Q{idx + 1}.
+                    {/* Top Row: Q Number, Question Text, Type & Required Status */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem', flex: 1, minWidth: 0 }}>
+                        <span
+                          style={{
+                            width: '32px',
+                            height: '26px',
+                            borderRadius: '6px',
+                            background: 'rgba(194, 65, 12, 0.12)',
+                            color: 'var(--brand-accent)',
+                            fontWeight: 700,
+                            fontSize: '0.78rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            marginTop: '1px',
+                          }}
+                        >
+                          Q{idx + 1}
                         </span>
-                        <span style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' }}>
-                          {q.questionText || 'Untitled Question'}
-                        </span>
-                        {isReq && <span style={{ color: 'var(--sentiment-negative)', fontWeight: 700 }}>*</span>}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)', lineHeight: 1.45 }}>
+                            {q.questionText || 'Untitled Question'}
+                          </span>
+                        </div>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
-                        <span className="dash-badge dash-badge--open" style={{ fontSize: '0.68rem', padding: '0.15rem 0.5rem', fontWeight: 600 }}>
-                          {qType}
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', flexShrink: 0 }}>
+                        <span
+                          style={{
+                            fontSize: '0.72rem',
+                            padding: '0.2rem 0.55rem',
+                            fontWeight: 600,
+                            borderRadius: '6px',
+                            background: 'var(--bg-card)',
+                            border: '1px solid var(--border-color)',
+                            color: 'var(--text-primary)',
+                          }}
+                        >
+                          {typeLabels[qType] || qType}
                         </span>
-                        <span style={{ fontSize: '0.7rem', color: isReq ? 'var(--text-secondary)' : 'var(--text-muted)' }}>
-                          {isReq ? 'Mandatory' : 'Optional'}
+                        <span
+                          style={{
+                            fontSize: '0.7rem',
+                            padding: '0.2rem 0.5rem',
+                            fontWeight: 600,
+                            borderRadius: '6px',
+                            background: isReq ? 'rgba(239, 68, 68, 0.1)' : 'rgba(148, 163, 184, 0.12)',
+                            color: isReq ? '#ef4444' : 'var(--text-muted)',
+                            border: isReq ? '1px solid rgba(239, 68, 68, 0.25)' : '1px solid var(--border-color)',
+                          }}
+                        >
+                          {isReq ? 'Required' : 'Optional'}
                         </span>
                       </div>
                     </div>
 
-                    {/* Options or parameters preview */}
+                    {/* Sub-details preview: Options or parameters */}
                     {['RADIO', 'CHECKBOX', 'DROPDOWN'].includes(qType) && opts.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginTop: '0.2rem' }}>
-                        {opts.map((opt, oIdx) => (
-                          <span
-                            key={oIdx}
-                            style={{
-                              fontSize: '0.72rem',
-                              padding: '0.15rem 0.45rem',
-                              background: 'var(--bg-card)',
-                              border: '1px solid var(--border-color)',
-                              borderRadius: '4px',
-                              color: 'var(--text-secondary)',
-                            }}
-                          >
-                            &bull; {opt}
-                          </span>
-                        ))}
+                      <div style={{ paddingLeft: '2.65rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.4rem' }}>
+                          {opts.map((opt, oIdx) => (
+                            <div
+                              key={oIdx}
+                              style={{
+                                fontSize: '0.76rem',
+                                padding: '0.35rem 0.65rem',
+                                background: 'var(--bg-card)',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '6px',
+                                color: 'var(--text-secondary)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.4rem',
+                              }}
+                            >
+                              <span style={{ color: 'var(--brand-accent)', fontWeight: 700, fontSize: '0.72rem' }}>
+                                {oIdx + 1}.
+                              </span>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {opt}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
 
                     {qType === 'RATING' && (
-                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-                        Scale: {q.minValue || 1} to {q.maxValue || 5}
+                      <div style={{ paddingLeft: '2.65rem', display: 'flex', alignItems: 'center', gap: '0.65rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            padding: '0.2rem 0.55rem',
+                            background: 'var(--bg-card)',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border-color)',
+                            color: 'var(--text-secondary)',
+                            fontWeight: 600,
+                          }}
+                        >
+                          Scale: {q.minValue || 1} &rarr; {q.maxValue || 5} Stars
+                        </span>
                       </div>
                     )}
 
                     {qType === 'TEXT' && (
-                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-                        Length: {q.minLength || 5} to {q.maxLength || 2000} characters
+                      <div style={{ paddingLeft: '2.65rem', display: 'flex', alignItems: 'center', gap: '0.65rem', fontSize: '0.78rem', flexWrap: 'wrap' }}>
+                        <span
+                          style={{
+                            padding: '0.2rem 0.55rem',
+                            background: 'var(--bg-card)',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border-color)',
+                            color: 'var(--text-secondary)',
+                            fontSize: '0.74rem',
+                          }}
+                        >
+                          Min: <strong>{q.minLength || 5}</strong> &bull; Max: <strong>{q.maxLength || 2000}</strong> characters
+                        </span>
                       </div>
                     )}
                   </div>
@@ -1552,8 +1625,8 @@ export default function CampaignWizard({
       />
 
       {/* ── Modal: Discard Changes Confirmation ── */}
-      {showDiscardModal && (
-        <div className="dash-modal-backdrop" style={{ zIndex: 9999 }}>
+      {showDiscardModal && typeof document !== 'undefined' && createPortal(
+        <div className="dash-modal-backdrop" style={{ zIndex: 99999 }}>
           <div className="dash-modal animate-fade-in" style={{ maxWidth: '480px' }}>
             <div className="dash-modal-header" style={{ borderBottom: 'none', paddingBottom: 0, marginBottom: '0.75rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
@@ -1607,12 +1680,13 @@ export default function CampaignWizard({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Modal: Exit / Cancel Navigation Guard ── */}
-      {showExitModal && (
-        <div className="dash-modal-backdrop" style={{ zIndex: 9999 }}>
+      {showExitModal && typeof document !== 'undefined' && createPortal(
+        <div className="dash-modal-backdrop" style={{ zIndex: 99999 }}>
           <div className="dash-modal animate-fade-in" style={{ maxWidth: '480px' }}>
             <div className="dash-modal-header" style={{ borderBottom: 'none', paddingBottom: 0, marginBottom: '0.75rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
@@ -1677,7 +1751,8 @@ export default function CampaignWizard({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

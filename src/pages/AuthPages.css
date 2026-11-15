@@ -447,7 +447,7 @@
   flex-direction: column;
   box-shadow: var(--shadow-sm);
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  cursor: pointer;
+  cursor: default;
   text-align: left;
 }
 

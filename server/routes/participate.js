@@ -49,16 +49,18 @@ router.get('/token/:token', async (req, res) => {
 
     // Status checks
     if (row.status === 'DELETED') {
-      return res.status(400).json({ error: 'This consultation has been closed and is no longer available.' });
+      return res.status(400).json({ error: 'This consultation has been closed and is no longer available.', status: 'DELETED' });
     }
 
     if (row.status === 'DRAFT') {
-      return res.status(400).json({ error: 'This consultation campaign is in draft mode and has not yet been published.' });
+      return res.status(400).json({ error: 'This consultation campaign is in draft mode and has not yet been published.', status: 'DRAFT' });
     }
 
     const now = new Date();
-    if (row.status === 'CLOSED' || now < new Date(row.opening_date) || now > new Date(row.closing_date)) {
-      return res.status(400).json({ error: 'This consultation is currently closed and no longer accepting submissions.' });
+    const closingDate = new Date(row.closing_date);
+    closingDate.setHours(23, 59, 59, 999);
+    if (row.status === 'CLOSED' || now < new Date(row.opening_date) || now > closingDate) {
+      return res.status(400).json({ error: 'This consultation is currently closed and no longer accepting submissions.', status: 'CLOSED' });
     }
 
     // Check duplicate submission
@@ -71,6 +73,26 @@ router.get('/token/:token', async (req, res) => {
       return res.status(409).json({
         error: 'You have already submitted feedback for this consultation. Each stakeholder is permitted one submission.',
         alreadySubmitted: true,
+        submissionStatus: 'SUBMITTED',
+        status: row.status,
+        campaign: {
+          id: row.campaign_id,
+          title: row.title,
+          status: row.status,
+          openingDate: row.opening_date,
+          closingDate: row.closing_date,
+        },
+        stakeholder: {
+          id: row.stakeholder_id,
+          firstName: row.first_name,
+          lastName: row.last_name,
+          first_name: row.first_name,
+          last_name: row.last_name,
+          email: row.email,
+          department: row.department,
+          designation: row.designation,
+          category: row.category,
+        },
       });
     }
 
@@ -109,6 +131,7 @@ router.get('/token/:token', async (req, res) => {
       campaign: {
         id: row.campaign_id,
         title: row.title,
+        status: row.status,
         description: row.description,
         objectives: row.objectives,
         additionalInstructions: row.additional_instructions,
@@ -117,8 +140,11 @@ router.get('/token/:token', async (req, res) => {
         closingDate: row.closing_date,
       },
       stakeholder: {
+        id: row.stakeholder_id,
         firstName: row.first_name,
         lastName: row.last_name,
+        first_name: row.first_name,
+        last_name: row.last_name,
         email: row.email,
         department: row.department,
         designation: row.designation,
@@ -182,6 +208,26 @@ router.post('/submit/:token', participateRateLimiter, async (req, res) => {
       return res.status(409).json({
         error: 'You have already submitted feedback for this consultation. Each stakeholder is permitted one submission.',
         alreadySubmitted: true,
+        submissionStatus: 'SUBMITTED',
+        status: row.status,
+        campaign: {
+          id: row.campaign_id,
+          title: row.title,
+          status: row.status,
+          openingDate: row.opening_date,
+          closingDate: row.closing_date,
+        },
+        stakeholder: {
+          id: row.stakeholder_id,
+          firstName: row.first_name,
+          lastName: row.last_name,
+          first_name: row.first_name,
+          last_name: row.last_name,
+          email: row.email,
+          department: row.department,
+          designation: row.designation,
+          category: row.category,
+        },
       });
     }
 
@@ -237,18 +283,17 @@ router.post('/submit/:token', participateRateLimiter, async (req, res) => {
         const rawText = typeof ans.value === 'string' ? ans.value : (ans.text || '');
         answerValue = sanitiseText(rawText);
         if (answerValue.trim()) {
-          // Send to NLP sentiment service
-          const nlpResult = await nlp.analyzeSentiment(answerValue);
-          sentiment = nlpResult.sentiment;
-          sentimentStatus = nlpResult.status;
-          sentimentProcessedAt = new Date();
+          // No sentiment analysis analyzed at submission time - kept pending for deliberation phase
+          sentiment = null;
+          sentimentStatus = 'PENDING';
+          sentimentProcessedAt = null;
 
           // Also sync to legacy comments table for backward compatibility
           try {
             await db.query(
               `INSERT INTO comments (campaign_id, question_id, stakeholder_id, text, sentiment)
                VALUES ($1, $2, $3, $4, $5)`,
-              [row.campaign_id, qId, row.stakeholder_id, answerValue, sentiment || 'Neutral']
+              [row.campaign_id, qId, row.stakeholder_id, answerValue, null]
             );
           } catch (_) {}
         }
@@ -257,6 +302,21 @@ router.post('/submit/:token', participateRateLimiter, async (req, res) => {
         answerValue = JSON.stringify(opts);
       } else if (qType === 'RATING') {
         answerValue = String(ans.value ?? ans.rating ?? '');
+        const numRating = Number(answerValue);
+        const maxVal = q.max_value ?? 5;
+        if (!isNaN(numRating) && numRating > 0) {
+          sentiment = null;
+          sentimentStatus = 'PENDING';
+          sentimentProcessedAt = null;
+
+          try {
+            await db.query(
+              `INSERT INTO comments (campaign_id, question_id, stakeholder_id, text, sentiment)
+               VALUES ($1, $2, $3, $4, $5)`,
+              [row.campaign_id, qId, row.stakeholder_id, `Rating: ${answerValue} / ${maxVal}`, null]
+            );
+          } catch (_) {}
+        }
       } else {
         // RADIO, DROPDOWN
         answerValue = String(ans.value ?? ans.selectedOption ?? '');
@@ -484,7 +544,7 @@ router.post('/comments', authMiddleware.authenticateParticipation, async (req, r
       await db.query(
         `INSERT INTO comments (campaign_id, question_id, stakeholder_id, text, sentiment)
          VALUES ($1, $2, $3, $4, $5)`,
-        [campaignId, ans.questionId, stakeholderId, clean, sentiment || 'Neutral']
+        [campaignId, ans.questionId, stakeholderId, clean, null]
       );
     }
 
